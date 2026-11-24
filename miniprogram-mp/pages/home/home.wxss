@@ -1,0 +1,374 @@
+.home {
+  position: relative;
+}
+
+/* ---------- 顶部 ---------- */
+.top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding-bottom: 36rpx;
+}
+
+.top-left {
+  display: flex;
+  flex-direction: column;
+}
+
+.top-weekday {
+  font-size: 40rpx;
+  margin-top: 8rpx;
+  color: #efe9df;
+}
+
+.streak {
+  display: flex;
+  align-items: baseline;
+  padding: 10rpx 24rpx;
+  border-radius: 40rpx;
+  background: rgba(232, 220, 200, 0.08);
+  border: 1rpx solid rgba(232, 220, 200, 0.16);
+}
+
+.streak-num {
+  font-size: 34rpx;
+  color: #e8dcc8;
+  font-weight: 600;
+  font-family: "Songti SC", serif;
+}
+
+.streak-unit {
+  font-size: 22rpx;
+  color: #8a8398;
+  margin-left: 6rpx;
+}
+
+/* ---------- 未抽卡 ---------- */
+.skeleton-block {
+  padding-top: 40rpx;
+}
+
+.draw-stage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 40rpx;
+}
+
+.card-back {
+  width: 560rpx;
+  height: 760rpx;
+  background: linear-gradient(160deg, #221a30 0%, #151020 55%, #0d0a14 100%);
+  border: 1rpx solid rgba(232, 220, 200, 0.14);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 30rpx 80rpx rgba(0, 0, 0, 0.55);
+  transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.card-back:active {
+  transform: scale(0.97);
+}
+
+.card-back.is-shuffling {
+  animation: shuffle 0.6s ease-in-out;
+}
+
+@keyframes shuffle {
+  0% { transform: rotate(0deg) scale(1); }
+  25% { transform: rotate(-4deg) scale(0.97); }
+  50% { transform: rotate(3deg) scale(1.02); }
+  75% { transform: rotate(-2deg) scale(0.99); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+
+.back-frame {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 480rpx;
+  height: 680rpx;
+  border: 1rpx solid rgba(232, 220, 200, 0.22);
+  border-radius: 20rpx;
+}
+
+.back-mark {
+  font-size: 160rpx;
+  color: rgba(232, 220, 200, 0.55);
+  line-height: 1;
+}
+
+.back-line {
+  width: 120rpx;
+  height: 1rpx;
+  background: rgba(232, 220, 200, 0.3);
+  margin: 32rpx 0;
+}
+
+.back-hint {
+  font-size: 24rpx;
+  color: #8a8398;
+  letter-spacing: 2rpx;
+}
+
+.draw-tip {
+  margin-top: 48rpx;
+}
+
+/* ---------- 已抽卡 ---------- */
+.card-face {
+  width: 100%;
+  height: 760rpx;
+  border-radius: 32rpx;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 30rpx 80rpx rgba(0, 0, 0, 0.5);
+  opacity: 1;
+  transform: scale(1);
+}
+
+.card-face.is-entering {
+  animation: cardIn 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes cardIn {
+  0% { opacity: 0; transform: scale(0.9) translateY(30rpx); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.face-inner {
+  position: relative;
+  z-index: 2;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60rpx;
+}
+
+.face-emoji {
+  font-size: 140rpx;
+  line-height: 1;
+  filter: drop-shadow(0 8rpx 24rpx rgba(0, 0, 0, 0.45));
+}
+
+.face-name {
+  font-size: 88rpx;
+  letter-spacing: 12rpx;
+  margin-top: 48rpx;
+  color: #fff;
+  text-shadow: 0 4rpx 20rpx rgba(0, 0, 0, 0.35);
+}
+
+.face-divider {
+  width: 80rpx;
+  height: 2rpx;
+  margin: 32rpx 0;
+  opacity: 0.8;
+}
+
+.face-tagline {
+  font-size: 28rpx;
+  letter-spacing: 4rpx;
+}
+
+.face-corner {
+  position: absolute;
+  width: 60rpx;
+  height: 60rpx;
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.face-corner.tl {
+  top: 32rpx;
+  left: 32rpx;
+  border-top: 1rpx solid;
+  border-left: 1rpx solid;
+}
+
+.face-corner.br {
+  bottom: 32rpx;
+  right: 32rpx;
+  border-bottom: 1rpx solid;
+  border-right: 1rpx solid;
+}
+
+/* ---------- intro ---------- */
+.intro {
+  padding: 44rpx 8rpx 12rpx;
+}
+
+.intro-text {
+  font-size: 30rpx;
+  line-height: 1.85;
+  color: #b6adc4;
+}
+
+/* ---------- 段落标题 ---------- */
+.section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 56rpx 8rpx 24rpx;
+}
+
+.section-title {
+  font-size: 34rpx;
+  color: #efe9df;
+}
+
+.section-count {
+  color: #8a8398;
+}
+
+/* ---------- 任务 ---------- */
+.task-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.task {
+  display: flex;
+  gap: 24rpx;
+  padding: 28rpx 28rpx;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1rpx solid rgba(255, 255, 255, 0.06);
+  border-radius: 24rpx;
+  margin-bottom: 16rpx;
+  transition: opacity 0.2s ease, transform 0.15s ease;
+}
+
+.task:active {
+  transform: scale(0.99);
+}
+
+.task.is-done {
+  opacity: 0.55;
+}
+
+.check {
+  flex: none;
+  width: 44rpx;
+  height: 44rpx;
+  border-radius: 50%;
+  border: 2rpx solid rgba(255, 255, 255, 0.28);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 4rpx;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.check-mark {
+  font-size: 26rpx;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.task-body {
+  flex: 1;
+}
+
+.task-text {
+  font-size: 29rpx;
+  line-height: 1.6;
+  color: #e6dfd5;
+}
+
+.task.is-done .task-text {
+  text-decoration: line-through;
+  color: #8a8398;
+}
+
+.task-meta {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: 14rpx;
+  flex-wrap: wrap;
+}
+
+.tag {
+  font-size: 21rpx;
+  color: #a99cc0;
+  background: rgba(169, 156, 192, 0.12);
+  padding: 4rpx 14rpx;
+  border-radius: 6rpx;
+}
+
+.note-preview {
+  font-size: 22rpx;
+  color: #7d7590;
+}
+
+/* ---------- 手记 ---------- */
+.note-box {
+  background: rgba(255, 255, 255, 0.035);
+  border: 1rpx solid rgba(255, 255, 255, 0.06);
+  border-radius: 24rpx;
+  padding: 28rpx;
+}
+
+.note-input {
+  width: 100%;
+  min-height: 130rpx;
+  font-size: 28rpx;
+  line-height: 1.7;
+  color: #e6dfd5;
+}
+
+.note-placeholder {
+  color: #615a70;
+}
+
+.note-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 20rpx;
+  padding-top: 20rpx;
+  border-top: 1rpx solid rgba(255, 255, 255, 0.06);
+}
+
+.note-save {
+  font-size: 26rpx;
+  color: #e8dcc8;
+  padding: 8rpx 24rpx;
+  border-radius: 24rpx;
+  background: rgba(232, 220, 200, 0.12);
+}
+
+.note-save.is-saving {
+  opacity: 0.5;
+}
+
+/* ---------- 底部操作 ---------- */
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 20rpx;
+  margin-top: 64rpx;
+}
+
+.actions .btn {
+  width: 100%;
+}
+
+/* ---------- 海报 canvas（隐藏） ---------- */
+.poster-canvas {
+  position: fixed;
+  left: -9999px;
+  top: 0;
+  width: 750px;
+  height: 1334px;
+  pointer-events: none;
+}
+
+/* 底部留白：为自定义 tabBar 让位 */
+.page-wrap.home {
+  padding-bottom: calc(160rpx + env(safe-area-inset-bottom));
+}

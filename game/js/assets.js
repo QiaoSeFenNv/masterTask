@@ -1,0 +1,111 @@
+/**
+ * 生成的图片资源：卡包外表 + 卡包背景。
+ *
+ * 全部懒加载：没加载好时返回 null，调用方自己退回纯渐变的画法，
+ * 所以启动第一帧永远是完整的，图片到了下一帧自然顶上去。
+ *
+ * 只在有 wx.createImage 的环境里真的去加载（小游戏 / 模拟器）；
+ * Node 里跑测试时没有，就一直是 null，走的还是渐变那条路。
+ */
+
+var env = require("./env.js");
+
+var BASE = "assets/";
+
+/** id -> { img, state }  state: "idle" | "loading" | "ok" | "fail" */
+var table = {};
+var listeners = [];
+var kicked = false;
+
+var PACK_IDS = ["deep", "dusk", "dawn"];
+
+/** 要加载的全部文件：键名 -> 文件名 */
+var FILES = {};
+PACK_IDS.forEach(function (id) {
+  FILES["pack:" + id] = "pack-" + id + ".jpg";
+  FILES["bg:" + id] = "bg-" + id + ".jpg";
+});
+
+function notify() {
+  for (var i = 0; i < listeners.length; i++) {
+    try {
+      listeners[i]();
+    } catch (e) {
+      /* 监听方自己崩了不该拖垮别的 */
+    }
+  }
+}
+
+function load(key, file) {
+  if (table[key]) return;
+  var w = env.getWx();
+  if (!w || typeof w.createImage !== "function") return;
+
+  var entry = { img: null, state: "loading" };
+  table[key] = entry;
+
+  var img;
+  try {
+    img = w.createImage();
+  } catch (e) {
+    entry.state = "fail";
+    return;
+  }
+
+  img.onload = function () {
+    entry.img = img;
+    entry.state = "ok";
+    notify();
+  };
+  img.onerror = function () {
+    entry.state = "fail";
+  };
+  img.src = BASE + file;
+}
+
+/** 启动时调一次就够了，重复调不会重复加载 */
+function preload() {
+  if (kicked) return;
+  kicked = true;
+  Object.keys(FILES).forEach(function (k) {
+    load(k, FILES[k]);
+  });
+}
+
+function get(key) {
+  var e = table[key];
+  return e && e.state === "ok" ? e.img : null;
+}
+
+/** 卡包外表（2:3 竖图） */
+function pack(seriesId) {
+  return get("pack:" + seriesId);
+}
+
+/** 卡包背景（正方形） */
+function bg(seriesId) {
+  return get("bg:" + seriesId);
+}
+
+/** 图片到齐 / 有新的到了就回调一次，用来触发重绘 */
+function onLoad(cb) {
+  if (typeof cb === "function") listeners.push(cb);
+}
+
+/** 还有没有在路上的（调试 / 测试用） */
+function pending() {
+  var n = 0;
+  Object.keys(table).forEach(function (k) {
+    if (table[k].state === "loading") n++;
+  });
+  return n;
+}
+
+module.exports = {
+  preload: preload,
+  pack: pack,
+  bg: bg,
+  onLoad: onLoad,
+  pending: pending,
+  FILES: FILES
+};

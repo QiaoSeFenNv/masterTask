@@ -1,0 +1,38 @@
+{
+  "pages": [
+    "pages/home/home",
+    "pages/calendar/calendar",
+    "pages/collection/collection"
+  ],
+  "window": {
+    "backgroundTextStyle": "light",
+    "navigationBarBackgroundColor": "#0e0b14",
+    "navigationBarTitleText": "今日角色",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#0e0b14"
+  },
+  "tabBar": {
+    "custom": true,
+    "color": "#6b6478",
+    "selectedColor": "#e8dcc8",
+    "backgroundColor": "#0e0b14",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/home/home",
+        "text": "今日"
+      },
+      {
+        "pagePath": "pages/calendar/calendar",
+        "text": "日历"
+      },
+      {
+        "pagePath": "pages/collection/collection",
+        "text": "图鉴"
+      }
+    ]
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

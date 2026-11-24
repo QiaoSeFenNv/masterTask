@@ -1,0 +1,223 @@
+.calendar {
+  padding-bottom: calc(160rpx + env(safe-area-inset-bottom));
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 40rpx;
+}
+
+.title {
+  font-size: 52rpx;
+  letter-spacing: 4rpx;
+}
+
+.streak-pill {
+  display: flex;
+  align-items: baseline;
+  gap: 8rpx;
+  padding: 10rpx 24rpx;
+  border-radius: 40rpx;
+  background: rgba(232, 220, 200, 0.08);
+  border: 1rpx solid rgba(232, 220, 200, 0.16);
+}
+
+.streak-num {
+  font-size: 34rpx;
+  color: #e8dcc8;
+  font-weight: 600;
+}
+
+.streak-label {
+  font-size: 22rpx;
+  color: #8a8398;
+}
+
+/* ---------- 月份切换 ---------- */
+.month-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8rpx 0 32rpx;
+}
+
+.nav-btn {
+  width: 72rpx;
+  height: 72rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 44rpx;
+  color: #8a8398;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.nav-btn:active {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.month-label {
+  font-size: 34rpx;
+  letter-spacing: 2rpx;
+}
+
+/* ---------- 月度统计 ---------- */
+.month-stats {
+  display: flex;
+  padding: 28rpx 0 36rpx;
+  border-top: 1rpx solid rgba(255, 255, 255, 0.06);
+  border-bottom: 1rpx solid rgba(255, 255, 255, 0.06);
+  margin-bottom: 36rpx;
+}
+
+.mstat {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8rpx;
+}
+
+.mstat-num {
+  font-size: 40rpx;
+  color: #efe9df;
+}
+
+.mstat-label {
+  font-size: 22rpx;
+  color: #6b6478;
+}
+
+/* ---------- 星期 ---------- */
+.weekdays {
+  display: flex;
+  padding-bottom: 16rpx;
+}
+
+.weekday {
+  flex: 1;
+  text-align: center;
+  font-size: 22rpx;
+  color: #5a5368;
+}
+
+/* ---------- 网格 ---------- */
+.grid {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.cell {
+  width: 14.2857%;
+  height: 130rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.cell.is-blank {
+  visibility: hidden;
+}
+
+.cell.has-entry {
+  border-radius: 16rpx;
+  transform: scale(0.9);
+  box-shadow: inset 0 0 0 1rpx rgba(255, 255, 255, 0.12);
+}
+
+.cell.is-today::after {
+  content: "";
+  position: absolute;
+  bottom: 10rpx;
+  width: 8rpx;
+  height: 8rpx;
+  border-radius: 50%;
+  background: #e8dcc8;
+}
+
+.cell-day {
+  font-size: 24rpx;
+  color: #cbc3d4;
+}
+
+.cell.is-future .cell-day {
+  color: #4a4458;
+}
+
+.cell-emoji {
+  font-size: 34rpx;
+  margin-top: 4rpx;
+}
+
+/* ---------- 提示 ---------- */
+.loading-tip,
+.hint {
+  padding: 60rpx 0;
+  text-align: center;
+}
+
+.small {
+  font-size: 26rpx;
+}
+
+/* ---------- 详情弹层 ---------- */
+.sheet-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  animation: fadeIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.sheet {
+  width: 540rpx;
+  height: 700rpx;
+  border-radius: 32rpx;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20rpx;
+  box-shadow: 0 30rpx 80rpx rgba(0, 0, 0, 0.6);
+}
+
+.sheet-emoji {
+  font-size: 110rpx;
+  line-height: 1;
+}
+
+.sheet-name {
+  font-size: 64rpx;
+  color: #fff;
+  letter-spacing: 8rpx;
+}
+
+.sheet-date {
+  font-size: 24rpx;
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 2rpx;
+}
+
+.sheet-divider {
+  width: 60rpx;
+  height: 2rpx;
+  margin: 12rpx 0;
+}
+
+.sheet-progress {
+  font-size: 26rpx;
+  color: rgba(255, 255, 255, 0.85);
+}

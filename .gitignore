@@ -1,0 +1,39 @@
+# dependencies
+node_modules/
+
+# build output
+server/dist/
+
+# local data (NEVER commit: contains user rows)
+data/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# secrets — .env holds WX_APPSECRET and JWT_SECRET
+.env
+.env.*
+!.env.example
+
+# certificates
+certs/
+*.pem
+
+# logs
+*.log
+logs/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+# Playwright/Chrome profile used by tools/.imgbot — contains live cookies & saved logins
+tools/.imgbot/profile/
+
+# generated image dump (the game reads copies in game/assets/)
+tools/.imgbot/out/
+
+# preview / contact-sheet screenshots
+tools/.imgbot/*.png

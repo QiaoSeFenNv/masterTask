@@ -1,0 +1,44 @@
+[
+  {
+    "id": "pack-deep",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, film grain texture. A card pack face design, tall portrait format, deep ocean palette: dark teal #164a66 at the top fading to near-black navy #061420 at the bottom, with luminous pale cyan #8fe3ff accents. Centered abstract hero motif: a thin engraved circular wave or spiral of pale cyan light, like an old nautical chart engraving rendered in thick paint, with a deep circular hollow at its center. Two thin vertical lines run down the left and right edges about fourteen percent in from each side, like the fold seams of a folded paper wrapper. A jagged torn top edge. Faint concentric ripple rings in the background. Muted, atmospheric, aged, quiet. No text, no lettering, no numerals, no typography, no logo, no signature, no watermark."
+  },
+  {
+    "id": "pack-dusk",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, film grain texture. A card pack face design, tall portrait format, dusk palette: muted violet #4a2a5e at the top fading to near-black plum #120a1e at the bottom, with soft lilac #e3aaff accents. Centered abstract hero motif: a thin engraved circular crescent-and-star cluster of lilac light, like an antique celestial chart engraved in thick paint, with a deep circular hollow at its center. Two thin vertical lines run down the left and right edges about fourteen percent in from each side, like the fold seams of a folded paper wrapper. A jagged torn top edge. Faint concentric evening-cloud rings in the background. Muted, atmospheric, aged, quiet. No text, no lettering, no numerals, no typography, no logo, no signature, no watermark."
+  },
+  {
+    "id": "pack-dawn",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, film grain texture. A card pack face design, tall portrait format, dawn palette: warm sand #f3cfa8 at the top through muted terracotta #d8825c to deep clay brown #7d4736 at the bottom, with pale cream #fff1d8 accents. Centered abstract hero motif: a thin engraved circular rising-sun fan of pale cream light, like an antique almanac engraving rendered in thick paint, with a deep circular hollow at its center. Two thin vertical lines run down the left and right edges about fourteen percent in from each side, like the fold seams of a folded paper wrapper. A jagged torn top edge. Faint concentric hillside rings in the background. Muted, atmospheric, aged, quiet. No text, no lettering, no numerals, no typography, no logo, no signature, no watermark."
+  },
+  {
+    "id": "bg-deep",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "1:1",
+    "quality": "high",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, film grain texture. A pure atmospheric background with no subject: deep ocean palette of dark teal #164a66, deep navy #0d2a3d and near-black #061420, with a faint pale cyan #8fe3ff glow low in the center. Drifting underwater haze, soft concentric ripple rings fading into darkness, faint suspended particles like dust in water, painterly vignette at the edges. Very dark, quiet, empty, suitable as a backdrop behind a card pack. No text, no lettering, no numerals, no objects, no figures, no logo, no watermark."
+  },
+  {
+    "id": "bg-dusk",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "1:1",
+    "quality": "high",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, film grain texture. A pure atmospheric background with no subject: dusk palette of muted violet #4a2a5e, deep plum #2a1740 and near-black #120a1e, with a faint soft lilac #e3aaff glow low in the center. Drifting evening mist, faint horizontal cloud bands, scattered pale dust motes, painterly vignette at the edges. Very dark, quiet, empty, suitable as a backdrop behind a card pack. No text, no lettering, no numerals, no objects, no figures, no logo, no watermark."
+  },
+  {
+    "id": "bg-dawn",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "1:1",
+    "quality": "high",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, film grain texture. A pure atmospheric background with no subject: dawn palette of warm sand #f3cfa8, muted terracotta #d8825c and deep clay brown #7d4736, with a pale cream #fff1d8 glow low in the center. Soft morning mist, faint horizontal haze bands, warm dust motes in low sunlight, painterly vignette at the edges. Soft, quiet, empty, suitable as a backdrop behind a card pack. No text, no lettering, no numerals, no objects, no figures, no logo, no watermark."
+  }
+]

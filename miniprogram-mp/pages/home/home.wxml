@@ -1,0 +1,118 @@
+<view class="page-wrap home">
+  <!-- 顶部：日期 + 连续天数 -->
+  <view class="top" style="padding-top: {{statusBarHeight + 24}}px">
+    <view class="top-left">
+      <text class="tiny muted">{{monthLabel}} / {{dayLabel}}</text>
+      <text class="top-weekday serif">{{weekday}}</text>
+    </view>
+    <view class="streak" wx:if="{{stats.streak > 0}}">
+      <text class="streak-num">{{stats.streak}}</text>
+      <text class="streak-unit">天</text>
+    </view>
+  </view>
+
+  <!-- 骨架 -->
+  <view wx:if="{{loading}}" class="skeleton-block">
+    <view class="skeleton" style="height: 760rpx; border-radius: 32rpx"></view>
+    <view class="skeleton" style="height: 40rpx; margin-top: 40rpx; width: 60%"></view>
+    <view class="skeleton" style="height: 40rpx; margin-top: 20rpx; width: 80%"></view>
+  </view>
+
+  <block wx:elif="{{!drawn}}">
+    <!-- 未抽卡：卡背 -->
+    <view class="draw-stage">
+      <view class="card-back card-sheen {{shuffling ? 'is-shuffling' : ''}}" bindtap="onDraw">
+        <view class="back-frame">
+          <text class="back-mark serif">?</text>
+          <view class="back-line"></view>
+          <text class="back-hint">抽一张卡，看看今天你是谁</text>
+        </view>
+      </view>
+      <view class="draw-tip" wx:if="{{!shuffling}}">
+        <text class="tiny muted">每日一次 · 不可重抽</text>
+      </view>
+    </view>
+  </block>
+
+  <block wx:else>
+    <!-- 已抽卡：卡面 -->
+    <view class="card-face card-sheen {{entering ? 'is-entering' : ''}}" style="background: {{cardBg}}">
+      <view class="face-inner">
+        <text class="face-emoji">{{draw.role.emoji}}</text>
+        <text class="face-name serif">{{draw.role.name}}</text>
+        <view class="face-divider" style="background: {{draw.role.accent}}"></view>
+        <text class="face-tagline" style="color: {{draw.role.accent}}">{{draw.role.tagline}}</text>
+      </view>
+      <view class="face-corner tl"></view>
+      <view class="face-corner br"></view>
+    </view>
+
+    <view class="intro">
+      <text class="serif intro-text">{{draw.role.intro}}</text>
+    </view>
+
+    <!-- 今日任务 -->
+    <view class="section-head">
+      <text class="section-title serif">今日任务</text>
+      <text class="section-count tiny muted">{{doneCount}} / {{taskViews.length}}</text>
+    </view>
+
+    <view class="task-list">
+      <view
+        class="task {{item.done ? 'is-done' : ''}}"
+        wx:for="{{taskViews}}"
+        wx:key="id"
+        data-id="{{item.id}}"
+        bindtap="onToggleTask"
+      >
+        <view class="check" style="{{item.done ? 'background:' + draw.role.accent + ';border-color:' + draw.role.accent : ''}}">
+          <text wx:if="{{item.done}}" class="check-mark" style="color: {{cardTextColor}}">✓</text>
+        </view>
+        <view class="task-body">
+          <text class="task-text">{{item.text}}</text>
+          <view class="task-meta">
+            <text class="tag">{{item.tag}}</text>
+            <text wx:if="{{item.note}}" class="note-preview">「{{item.note}}」</text>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <!-- 今日手记 -->
+    <view class="section-head">
+      <text class="section-title serif">今日手记</text>
+      <text class="tiny muted">可选 · 一句话</text>
+    </view>
+
+    <view class="note-box">
+      <textarea
+        class="note-input"
+        placeholder="今天扮演这个角色，感受如何？"
+        placeholder-class="note-placeholder"
+        value="{{noteDraft}}"
+        maxlength="200"
+        auto-height
+        bindinput="onNoteInput"
+        bindblur="onNoteBlur"
+      />
+      <view class="note-foot">
+        <text class="tiny muted">{{noteDraft.length}} / 200</text>
+        <view class="note-save {{noteSaving ? 'is-saving' : ''}}" bindtap="onSaveNote">
+          <text>{{noteSaving ? '保存中' : '保存'}}</text>
+        </view>
+      </view>
+    </view>
+
+    <!-- 底部操作 -->
+    <view class="actions">
+      <button class="btn btn-primary" bindtap="onSharePoster" hover-class="none">
+        生成今日卡片
+      </button>
+      <button class="btn btn-ghost" open-type="share" hover-class="none">
+        分享给朋友
+      </button>
+    </view>
+  </block>
+</view>
+
+<canvas type="2d" id="posterCanvas" class="poster-canvas" />

@@ -1,0 +1,68 @@
+<view class="page-wrap calendar">
+  <view class="head" style="padding-top: {{statusBarHeight + 24}}px">
+    <text class="title serif">角色日历</text>
+    <view class="streak-pill">
+      <text class="streak-num serif">{{streak}}</text>
+      <text class="streak-label">天连抽</text>
+    </view>
+  </view>
+
+  <view class="month-nav">
+    <view class="nav-btn" bindtap="onPrevMonth">‹</view>
+    <text class="month-label serif">{{year}} 年 {{month}} 月</text>
+    <view class="nav-btn" bindtap="onNextMonth">›</view>
+  </view>
+
+  <view class="month-stats">
+    <view class="mstat">
+      <text class="mstat-num serif">{{monthDays}}</text>
+      <text class="mstat-label">抽卡天数</text>
+    </view>
+    <view class="mstat">
+      <text class="mstat-num serif">{{monthDone}}</text>
+      <text class="mstat-label">全勤天数</text>
+    </view>
+    <view class="mstat">
+      <text class="mstat-num serif">{{monthRate}}</text>
+      <text class="mstat-label">全勤率</text>
+    </view>
+  </view>
+
+  <view class="weekdays">
+    <text wx:for="{{weekdayNames}}" wx:key="*this" class="weekday">{{item}}</text>
+  </view>
+
+  <view class="grid">
+    <block wx:for="{{cells}}" wx:key="key">
+      <view wx:if="{{item.type === 'blank'}}" class="cell is-blank"></view>
+      <view
+        wx:else
+        class="cell {{item.isToday ? 'is-today' : ''}} {{item.future ? 'is-future' : ''}} {{item.entry ? 'has-entry' : ''}}"
+        style="background: {{item.bg}}"
+        data-index="{{index}}"
+        bindtap="onTapDay"
+      >
+        <text class="cell-day">{{item.day}}</text>
+        <text wx:if="{{item.entry}}" class="cell-emoji">{{item.entry.emoji}}</text>
+      </view>
+    </block>
+  </view>
+
+  <view wx:if="{{loading}}" class="loading-tip">
+    <text class="tiny muted">加载中…</text>
+  </view>
+
+  <view class="hint" wx:if="{{!loading && monthDays === 0}}">
+    <text class="muted small">这个月还没有角色。从今天开始吧。</text>
+  </view>
+</view>
+
+<view wx:if="{{detail}}" class="sheet-mask" bindtap="onCloseDetail">
+  <view class="sheet card-sheen" style="background: {{detail.bg}}">
+    <text class="sheet-emoji">{{detail.emoji}}</text>
+    <text class="sheet-name serif">{{detail.roleName}}</text>
+    <text class="sheet-date">{{detail.dateLabel}}</text>
+    <view class="sheet-divider" style="background: {{detail.accent}}"></view>
+    <text class="sheet-progress">{{detail.tasksDone}} / {{detail.tasksTotal}} 项任务完成</text>
+  </view>
+</view>

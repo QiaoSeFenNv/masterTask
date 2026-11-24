@@ -1,0 +1,71 @@
+<view class="page-wrap collection">
+  <view class="head" style="padding-top: {{statusBarHeight + 24}}px">
+    <text class="title serif">角色图鉴</text>
+    <text class="tiny muted">{{collectedCount}} / {{totalCount}}</text>
+  </view>
+
+  <!-- 总览 -->
+  <view class="overview">
+    <view class="oitem">
+      <text class="onum serif">{{stats.totalDays}}</text>
+      <text class="olabel">累计天数</text>
+    </view>
+    <view class="oitem">
+      <text class="onum serif">{{stats.streak}}</text>
+      <text class="olabel">当前连续</text>
+    </view>
+    <view class="oitem">
+      <text class="onum serif">{{stats.completionRate}}%</text>
+      <text class="olabel">任务完成率</text>
+    </view>
+  </view>
+
+  <!-- 收集进度 -->
+  <view class="progress-block">
+    <view class="progress-head">
+      <text class="tiny muted">图鉴进度</text>
+      <text class="tiny" style="color: {{accentFallback}}">{{progress}}%</text>
+    </view>
+    <view class="progress-track">
+      <view class="progress-fill" style="width: {{progress}}%"></view>
+    </view>
+  </view>
+
+  <!-- 卡片网格 -->
+  <view wx:if="{{loading}}" class="grid">
+    <view wx:for="{{[1,2,3,4,5,6]}}" wx:key="*this" class="skeleton cell-skel"></view>
+  </view>
+
+  <view wx:else class="grid">
+    <view
+      class="card-cell {{item.owned ? 'is-owned' : 'is-locked'}}"
+      wx:for="{{cards}}"
+      wx:key="id"
+      style="{{item.owned ? 'background:' + item.bg : ''}}"
+      data-id="{{item.id}}"
+      bindtap="onTapCard"
+    >
+      <block wx:if="{{item.owned}}">
+        <text class="card-emoji">{{item.emoji}}</text>
+        <text class="card-name serif">{{item.name}}</text>
+        <text wx:if="{{item.times > 1}}" class="card-times">×{{item.times}}</text>
+      </block>
+      <block wx:else>
+        <text class="lock-mark">?</text>
+        <text class="lock-hint">未解锁</text>
+      </block>
+    </view>
+  </view>
+</view>
+
+<!-- 角色详情 -->
+<view wx:if="{{selected}}" class="sheet-mask" bindtap="onClose">
+  <view class="sheet" style="background: {{selected.bg}}">
+    <text class="sheet-emoji">{{selected.emoji}}</text>
+    <text class="sheet-name serif">{{selected.name}}</text>
+    <text class="sheet-tagline" style="color: {{selected.accent}}">{{selected.tagline}}</text>
+    <view class="sheet-line" style="background: {{selected.accent}}"></view>
+    <text class="sheet-intro serif">{{selected.intro}}</text>
+    <text class="sheet-foot">{{selected.taskCount}} 个角色任务 · 每次随机抽 3–4 条</text>
+  </view>
+</view>

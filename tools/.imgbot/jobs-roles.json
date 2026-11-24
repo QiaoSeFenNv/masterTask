@@ -1,0 +1,135 @@
+[
+  {
+    "id": "wanderer",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, muted palette of deep teal, moss green, slate blue and a single warm golden light. A lone figure in simple clothes walking along a quiet unmarked path at dusk seen from very far away, small in the distance, a low horizon, open countryside, a gentle streamed light on the path. Wet reflections, drifting mist, lo-fi film grain, high contrast chiaroscuro. Painterly, mature, quiet and contemplative mood. No text, no lettering, no numerals, no watermark. Vertical portrait composition 2:3, figure tiny in the lower two-thirds, generous empty sky at the top.",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high"
+  },
+  {
+    "id": "apprentice",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, muted palette of charcoal, cool graphite grey binding to a single warm candle glow. A lone figure seen from very far away, small, seated at a plain wooden desk inside a dark workshop, a single lit candle in front of them, piles of open books and scattered notes around. Velvet shadows, drifting dust, lo-fi film grain, high contrast chiaroscuro. Painterly, mature, quiet and focused mood. No text, no lettering, no numerals, no watermark. Vertical portrait composition 2:3, figure tiny in the lower two-thirds, generous dark empty space at the top.",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high"
+  },
+  {
+    "id": "poet",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, muted palette of plum, wine red and burnt umber with a single warm amber candlelight. A lone figure in a long dress seen from very far away, small, standing at a dark window at night, back towards us, holding a small folded paper, a warm lamp beside them. Rain on the glass, drifting fog, lo-fi film grain, high contrast chiaroscuro. Painterly, mature, quiet and tender mood. No text, no lettering, no numerals, no watermark. Vertical portrait composition 2:3, figure tiny in the lower two-thirds, generous dark empty space at the top.",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high"
+  },
+  {
+    "id": "architect",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, muted palette of charcoal, slate and cool steel grey with a single warm amber desk lamp glow. A lone figure seen from very far away, small, bent over a large drafting table in a dark room at night, cross-section paper, simple drafted shapes of geometric masses, a T-square and ruler. Fine dust, lo-fi film grain, high contrast chiaroscuro. Painterly, mature, precise and quiet mood. No text, no lettering, no numerals, no watermark. Vertical portrait composition 2:3, figure tiny in the lower two-thirds, generous dark empty space at the top.",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high"
+  },
+  {
+    "id": "gardener",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, muted palette of deep forest green, moss and earthy olive with a single warm amber lantern glow. A lone figure in simple work clothes seen from very far away, small, kneeling beside young plants in a low glow of a garden at night, potting a little seedling, dark leaves and damp soil around. Dew, drifting fog, lo-fi film grain, high contrast chiaroscuro. Painterly, mature, slow and caring mood. No text, no lettering, no numerals, no watermark. Vertical portrait composition 2:3, figure tiny in the lower two-thirds, generous dark empty space at the top.",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high"
+  },
+  {
+    "id": "screenwriter",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, muted palette of deep violet, midnight purple and charcoal with a single warm amber lamp glow. A lone figure seen from very far away, small, standing near a lit desk with small sketch frames drawn on cards arranged in a row, working out a scene. Long shadows, drifting dust, lo-fi film grain, high contrast chiaroscuro. Painterly, mature, cinematic and quiet mood. No text, no lettering, no numerals, no watermark. Vertical portrait composition 2:3, figure tiny in the lower two-thirds, generous dark empty space at the top.",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high"
+  },
+  {
+    "id": "watchmaker",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, muted palette of mahogany brown, oxblood and warm sepia with a single warm amber bench lamp glow. A lone figure seen from very far away, small, seated under a green-shaded desk lamp at a tiny watchmakers bench, a loupe-like tool, small gears opening up on a dark surface. Dust motes, drifting shadow, lo-fi film grain, high contrast chiaroscuro. Painterly, mature, patient and meticulous mood. No text, no lettering, no numerals, no watermark. Vertical portrait composition 2:3, figure tiny in the lower two-thirds, generous dark empty space at the top.",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high"
+  },
+  {
+    "id": "collector",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, muted palette of dusty violet, muted plum and warm brown with a single warm amber lamp glow. A lone figure seen from very far away, small, in a dim room with glass display cases and a long wooden shelf, carefully holding one small ordinary object from their day, the little shelf already full of small found things. Fine dust, drifting shadow, lo-fi film grain, high contrast chiaroscuro. Painterly, mature, quietly delighted mood. No text, no lettering, no numerals, no watermark. Vertical portrait composition 2:3, figure tiny in the lower two-thirds, generous dark empty space at the top.",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high"
+  },
+  {
+    "id": "chef",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, muted palette of russet, burnt sienna and deep umber with a single warm amber glow from a stove. A lone figure seen from very far away, small, standing at a kitchen counter in a dim kitchen, steam rising from a single pot, hands busy, simple ingredients laid out around. Glossy wet surfaces, drifting steam, lo-fi film grain, high contrast chiaroscuro. Painterly, mature, warm and unhurried mood. No text, no lettering, no numerals, no watermark. Vertical portrait composition 2:3, figure tiny in the lower two-thirds, generous dark empty space at the top.",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high"
+  },
+  {
+    "id": "courier",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, muted palette of deep navy, steel blue and cool teal with a single warm amber window glow. A lone figure seen from very far away, small, a messenger in a long coat, holding a sealed plain envelope, standing on a dark quiet street in the rain in front of a lit doorway. Wet asphalt reflections, drifting fog, lo-fi film grain, high contrast chiaroscuro. Painterly, mature, quiet and determined mood. No text, no lettering, no numerals, no watermark. Vertical portrait composition 2:3, figure tiny in the lower two-thirds, generous dark empty space at the top.",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high"
+  },
+  {
+    "id": "photographer",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, muted palette of black, charcoal and grey with a single warm amber cold-sun edge. A lone figure seen from very far away, small, standing alone with a camera on a dark hill at night, aiming carefully, only one soft light in the distant town below. Drifting mist, lo-fi film grain, high contrast chiaroscuro. Painterly, mature, focused and patient mood. No text, no lettering, no numerals, no watermark. Vertical portrait composition 2:3, figure tiny in the lower two-thirds, generous dark empty space at the top.",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high"
+  },
+  {
+    "id": "explorer",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, muted palette of deep forest green, pine black and a single warm amber lantern glow. A lone figure seen from very far away, small, a hiker with a small lamp stepping off a marked path at the edge of a dark forest at night, a narrow trail vanishing into the tall trees. Drifting fog between trunks, lo-fi film grain, high contrast chiaroscuro. Painterly, mature, quiet courage mood. No text, no lettering, no numerals, no watermark. Vertical portrait composition 2:3, figure tiny in the lower two-thirds, generous dark empty space at the top.",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high"
+  },
+  {
+    "id": "translator",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, muted palette of slate blue, dusty mauve and charcoal with a single warm amber desk light glow. A lone figure seen from very far away, small, seated at a long wooden table in a quiet dark library, explaining a small object on the table with open hands to an empty chair opposite, bookshelves fading into shadow. Cold drifting haze, lo-fi film grain, high contrast chiaroscuro. Painterly, mature, generous and quiet mood. No text, no lettering, no numerals, no watermark. Vertical portrait composition 2:3, figure tiny in the lower two-thirds, generous dark empty space at the top.",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high"
+  },
+  {
+    "id": "nightwatch",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, muted palette of midnight navy, deep indigo and black with a cold blue glow and a faint warm amber lamp. A lone figure in a coat seen from very far away, small, standing watch under a single arched streetlamp on a deep blue pre-dawn street, a single lit window far across, stars in the sky. Wet cobblestones, drifting fog, lo-fi film grain, high contrast chiaroscuro. Painterly, mature, still and attentive mood. No text, no lettering, no numerals, no watermark. Vertical portrait composition 2:3, figure tiny in the lower two-thirds, generous dark empty space at the top.",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high"
+  },
+  {
+    "id": "storyteller",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, muted palette of warm umber, saddle brown, caramel and dark sepia with a single warm amber candle glow. A lone figure seen from very far away, small, sitting on a low stool by a small warm fire in a dark room, telling a story with open hands, a worn book on their knee, a circle of dim light. Embers, drifting smoke, lo-fi film grain, high contrast chiaroscuro. Painterly, mature, warm and old-fashioned mood. No text, no lettering, no numerals, no watermark. Vertical portrait composition 2:3, figure tiny in the lower two-thirds, generous dark empty space at the top.",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high"
+  },
+  {
+    "id": "alchemist",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, muted palette of deep aubergine, violet and plum black with a glowing golden amber light. A lone figure in long robes seen from very far away, small, standing at a cluttered workbench in a dark stone room, ordinary discarded things — jars, rags, broken wire — giving off a soft golden glow, a round glass vessel catching the light. Drifting fumes, lo-fi film grain, high contrast chiaroscuro. Painterly, mature, quietly magical mood. No text, no lettering, no symbols, no numerals, no watermark. Vertical portrait composition 2:3, figure tiny in the lower two-thirds, generous dark empty space at the top.",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high"
+  },
+  {
+    "id": "surveyor",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, muted palette of steel grey, slate blue and cool silver light with a soft overcast glow. A lone figure in a short coat seen from very far away, small, holding a simple tripod-like sighting tool, measuring a scattered dark landscape at dawn, faint geometric marks on the fog. Wet stones, low mist, lo-fi film grain, high contrast chiaroscuro. Painterly, mature, precise and quiet mood. Vertical portrait composition 2:3, figure tiny in the lower two-thirds, generous pale empty mist at the top.",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high"
+  },
+  {
+    "id": "bard",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, muted palette of deep rose, violet, indigo and warm crimson with a single warm amber lantern glow. A lone figure with a small stringed instrument seen from very far away, small, standing under a single string of tiny warm lamps in a dark alley at night, a few faint figures listening in shadow. Drifting fog, lo-fi film grain, high contrast chiaroscuro. Painterly, mature, romantic and hushed mood. No text, no lettering, no musical notes, no numerals, no watermark. Vertical portrait composition 2:3, figure tiny in the lower two-thirds, generous dark empty space at the top.",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high"
+  },
+  {
+    "id": "coach",
+    "prompt": "Oil painting, thick impasto brush strokes, visible canvas grain, muted palette of deep violet, electric indigo, magenta and night black, low saturated. A lone figure in simple training clothes seen from far away, standing in the middle of an empty dark training hall, one warm amber light above, red hand wraps-like bands on both wrists, sweat sheen, a single bag and chair in the background, determined but calm. Drifting dust, lo-fi film grain, high contrast chiaroscuro. Painterly, mature, focused and disciplined mood. No text, no lettering, no numerals, no watermark. Vertical portrait composition 2:3, figure in the lower two-thirds, generous dark empty space at the top.",
+    "model": "mdl_8cbbd2518155690286b3b81cb306cc39",
+    "aspect": "2:3",
+    "quality": "high"
+  }
+]
