@@ -175,12 +175,13 @@ test("runtime adapter preserves canvas binding and falls back to a 16 ms timer",
   fallback.cancelFrame(ticket);
 });
 
-function storeWith(api) {
+function storeWith(api, feedback = []) {
   const store = loadModule("game/js/store.js", {
     "./api.js": api,
     "./layout.js": { normalizeDraw: (d) => d },
     "./pack.js": pack,
     "./animation.js": animation,
+    "./sfx.js": { play: (name) => feedback.push(name) },
   });
   Object.assign(store.state, {
     status: "ready", draw: null, offer: [{ id: "a" }, { id: "b" }, { id: "c" }],
@@ -191,18 +192,21 @@ function storeWith(api) {
 }
 
 test("confirmation failure preserves candidates and allows retry", async () => {
-  const store = storeWith({ post: () => Promise.reject(new Error("offline")) });
+  const feedback = [];
+  const store = storeWith({ post: () => Promise.reject(new Error("offline")) }, feedback);
   await assert.rejects(store.confirmPick(), /offline/);
   assert.equal(store.state.shifting, false);
   assert.equal(store.state.slot, "b");
   assert.equal(store.state.offer.length, 3);
   assert.equal(store.stage(), "pick");
   assert.equal(store.state.draw, null);
+  assert.deepEqual(feedback, [], "A failed confirmation has no settle cue");
 });
 
 test("confirmation happens once and reveal completion preserves the saved draw", async () => {
   let resolveDraw;
   let calls = 0;
+  const feedback = [];
   const store = storeWith({
     post: (url, body) => {
       calls++;
@@ -210,7 +214,7 @@ test("confirmation happens once and reveal completion preserves the saved draw",
       return new Promise((resolve) => { resolveDraw = resolve; });
     },
     get: () => Promise.resolve({}),
-  });
+  }, feedback);
   store.state.anim = { kind: "tear", series: "dusk", doneAt: BASE };
   store.state.picked = [];
   store.enterRing();
@@ -224,10 +228,14 @@ test("confirmation happens once and reveal completion preserves the saved draw",
   store.selectSlot("a");
   await store.confirmPick();
   assert.equal(calls, 1);
+  assert.deepEqual(feedback, ["flip", "flip", "flip"], "The network response has not settled yet");
   assert.equal(store.state.slot, "b");
   const draw = { date: "2026-11-24", role: { id: "b", name: "角色" }, tasks: [], noteDraft: "" };
   resolveDraw(draw);
   await pending;
+  assert.deepEqual(feedback, ["flip", "flip", "flip", "settle"]);
+  await store.confirmPick();
+  assert.equal(feedback.filter((name) => name === "settle").length, 1);
   assert.equal(store.stage(), "reveal");
   assert.equal(store.state.anim.series, "dusk");
   assert.equal(store.state.anim.slotIndex, 1);

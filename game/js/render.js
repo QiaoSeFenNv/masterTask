@@ -216,14 +216,13 @@ function renderDrawn(vp, state, y) {
 
   draw.clipRoundRect(card.x, card.y, card.w, card.h, card.r);
   gradientFill(card, role.gradient || [theme.packTop, theme.packBottom], 150, 0);
-  draw.getCtx().globalAlpha = 0.16;
+  draw.getCtx().globalAlpha *= 0.16;
   gradientFill(
     { x: card.x, y: card.y, w: card.w, h: card.h * 0.5 },
     ["#ffffff", role.gradient ? role.gradient[0] : theme.packTop],
     180,
     0,
   );
-  draw.getCtx().globalAlpha = 1;
   draw.restore();
 
   /* 角标 */

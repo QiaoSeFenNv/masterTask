@@ -9,9 +9,9 @@ const brotli = promisify(zlib.brotliCompress);
 const gzip = promisify(zlib.gzip);
 const ROOT = path.resolve(__dirname, '../web/dist');
 const MIME = {'.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8',
-  '.css':'text/css; charset=utf-8', '.svg':'image/svg+xml', '.jpg':'image/jpeg',
+  '.css':'text/css; charset=utf-8', '.svg':'image/svg+xml', '.jpg':'image/jpeg', '.wav':'audio/wav',
   '.wasm':'application/wasm', '.json':'application/json; charset=utf-8', '.txt':'text/plain; charset=utf-8'};
-const CSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
+const CSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
 function createServer() {
   const cache = new Map();
   return http.createServer(async (req, res) => {

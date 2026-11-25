@@ -138,7 +138,7 @@ function seriesRect(vp, index, at) {
 function renderSeriesPick(vp, state, options) {
   options = options || {};
   var zones = [], top = layout.contentTop(vp);
-  var opacity = options.opacity == null ? 1 : options.opacity;
+  var opacity = (options.opacity == null ? 1 : options.opacity) * draw.getCtx().globalAlpha;
   var at = options.at == null ? now() : options.at;
   draw.text("今天的卡包", W/2, top+6, {size:15,weight:"600",color:theme.text,align:"center",alpha:opacity});
   draw.text("挑一个，撕开看今天是谁", W/2, top+28, {size:11,color:theme.muted,align:"center",alpha:opacity});
@@ -201,6 +201,7 @@ function renderTear(vp, state, anim) {
   var fin = anim.doneAt ? pack.clamp01((now() - anim.doneAt) / pack.TEAR_FINISH_MS) : 0;
   var s = pack.seriesOf(anim.series);
   var c = draw.getCtx();
+  var opacity = c.globalAlpha;
 
   var packet = pack.tearRect(top);
   var w = packet.w;
@@ -224,7 +225,7 @@ function renderTear(vp, state, anim) {
     g.addColorStop(0, s.accent);
     g.addColorStop(1, "rgba(0,0,0,0)");
     c.save();
-    c.globalAlpha = 0.06 + p * 0.30;
+    c.globalAlpha = opacity * (0.06 + p * 0.30);
     c.fillStyle = g;
     c.fillRect(0, top - 40, W, 440);
     c.restore();
@@ -232,12 +233,18 @@ function renderTear(vp, state, anim) {
 
   /** 有生成图就贴图，没有就退回渐变 */
   function body(img) {
-    if (!draw.image(img, x0, y0, cw, ch, 0, 1)) {
+    if (!draw.image(img, x0, y0, cw, ch, 0, c.globalAlpha)) {
       draw.fillGradientRect(x0, y0, cw, ch, [s.top, s.mid, s.bottom], 160, 0);
     }
   }
 
   var img = assets.pack(s.id);
+
+  // 只旋转还连着的包身；已撕下的纸条在这个作用域外保持平移。
+  c.save();
+  c.translate(cx, y0 + ch / 2);
+  c.rotate((anim.tilt || 0) * Math.PI / 180);
+  c.translate(-cx, -(y0 + ch / 2));
 
   /* --- 撕口以下：完整留着 --- */
   c.save();
@@ -275,11 +282,32 @@ function renderTear(vp, state, anim) {
     c.restore();
   }
 
+  /* --- 留在包上的那侧撕口：一条发亮的边 + 翘起的纤维 --- */
+  if (p > 0.02) {
+    var edgeA = Math.cos(((p - 0.02) / 0.98) * Math.PI * 0.5); // 越接近撕通越淡
+    c.save();
+    c.globalAlpha = opacity * Math.max(0.12, edgeA) * 0.75;
+    c.strokeStyle = s.accent;
+    c.lineWidth = 1.4;
+    c.beginPath();
+    c.moveTo(x0, seamY + tearOffset(0, amp, seed));
+    for (var m = 1; m <= TEAR_SEGS; m++) {
+      var tm = m / TEAR_SEGS;
+      if (x0 + cw * tm > tearX) break;
+      c.lineTo(x0 + cw * tm, seamY + tearOffset(tm, amp, seed));
+    }
+    c.lineTo(tearX, y0);
+    c.stroke();
+    c.restore();
+  }
+
+  c.restore();
+
   /* --- 已经撕下来的那一条：整条抬起来，跟着手指往右上方走 --- */
   if (p > 0) {
     var dx = 6 + p * 22; // 往右，跟着滑走的手指
     var dy = -4 - p * 16 - fin * 120; // 往上飘
-    var a = (1 - fin * 0.9) * (1 - p * 0.05);
+    var a = opacity * (1 - fin * 0.9) * (1 - p * 0.05);
 
     c.save();
     c.globalAlpha = a;
@@ -319,24 +347,6 @@ function renderTear(vp, state, anim) {
     c.restore();
   }
 
-  /* --- 留在包上的那侧撕口：一条发亮的边 + 翘起的纤维 --- */
-  if (p > 0.02) {
-    var edgeA = Math.cos(((p - 0.02) / 0.98) * Math.PI * 0.5); // 越接近撕通越淡
-    c.save();
-    c.globalAlpha = Math.max(0.12, edgeA) * 0.75;
-    c.strokeStyle = s.accent;
-    c.lineWidth = 1.4;
-    c.beginPath();
-    c.moveTo(x0, seamY + tearOffset(0, amp, seed));
-    for (var m = 1; m <= TEAR_SEGS; m++) {
-      var tm = m / TEAR_SEGS;
-      if (x0 + cw * tm > tearX) break;
-      c.lineTo(x0 + cw * tm, seamY + tearOffset(tm, amp, seed));
-    }
-    c.lineTo(tearX, y0);
-    c.stroke();
-    c.restore();
-  }
 
   var hint =
     fin > 0 ? "撕开了" : p <= 0.01 ? "从左边划过包口" : p < 1 ? "继续往右划…" : "松手";
@@ -380,7 +390,7 @@ function cardShadow(slot, w, h) {
   var c = draw.getCtx();
   var near = pack.clamp01(slot.depth);
   c.save();
-  c.globalAlpha = 0.1 + near * 0.26;
+  c.globalAlpha *= 0.1 + near * 0.26;
   c.fillStyle = "#000";
   c.beginPath();
   if (typeof c.ellipse === "function") {
@@ -430,7 +440,7 @@ function renderRing(vp, state, anim) {
     // 「转过去」靠横向压扁（wscale）表现，不用真旋转。
     c.save();
     c.translate(slot.x, slot.y);
-    c.globalAlpha = slot.alpha == null ? 1 : slot.alpha;
+    c.globalAlpha *= slot.alpha == null ? 1 : slot.alpha;
 
     if (on) {
       // 正反两面都按同一透视宽度缩放，过中点才换卡面。
@@ -474,9 +484,23 @@ function renderRing(vp, state, anim) {
 
   // 拖动提示：环下方一对箭头，暗示「可以左右拨」。
   // 要排在正前方那张的下边缘之外 —— 那张牌的最低点比环心低 ry + cardH/2。
-  var hintY = top + pack.RING.cyOff + pack.RING.ry + pack.RING.cardH / 2 + 26;
+  var hintY = Math.min(top + pack.RING.cyOff + pack.RING.ry + pack.RING.cardH / 2 + 26, layout.contentBottom(vp) - 36);
+  var front = list[list.length - 1];
+  var frontRole = front && state.offer[front.i];
+  if (frontRole) {
+    // A short viewport keeps the caption readable above navigation without moving the ring.
+    if (hintY < front.y + front.h * front.scale / 2 + 18) {
+      fillRound(PAD, hintY - 21, layout.innerW(), 48, 12, theme.bg);
+    }
+    draw.text(frontRole.name, W / 2, hintY, {
+      size: 14, weight: "600", serif: true, color: theme.gold, align: "center",
+    });
+    draw.text("第 " + (front.i + 1) + " / " + state.offer.length + " 张", W / 2, hintY + 18, {
+      size: 10.5, color: theme.muted, align: "center",
+    });
+  }
   c.save();
-  c.globalAlpha = 0.28;
+  c.globalAlpha *= 0.28;
   c.strokeStyle = theme.faint;
   c.lineWidth = 1;
   c.beginPath();

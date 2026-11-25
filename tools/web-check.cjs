@@ -11,7 +11,7 @@ const results = [];
 async function state(page) { return page.evaluate(() => {
   const s = rolesPreview.game.store.state;
   return {stage:s.anim.kind,draw:s.draw,slot:s.slot,picked:s.picked.slice(),p:s.anim.p,
-    scroll:s.scroll,scrollMax:s.scrollMax,tab:s.tab,calendar:s.calendar,collection:s.collection,selected:s.selected};
+    tilt:s.anim.tilt,scroll:s.scroll,scrollMax:s.scrollMax,tab:s.tab,calendar:s.calendar,collection:s.collection,selected:s.selected};
 }); }
 async function point(page,x,y) { return page.evaluate(({x,y}) => {
   const r = document.querySelector('#game').getBoundingClientRect();
@@ -42,21 +42,55 @@ async function flush(page) { await page.evaluate(async()=>{
   const p=rolesPreview.requireGame('js/pag-reveal.js');await p.settled();rolesPreview.game.render();await p.settled();rolesPreview.game.render();
 }); }
 async function shot(page,name) { const file=path.join(ARTIFACTS,name+'.png');await page.screenshot({path:file,fullPage:true});return file; }
-async function open(browser,base,mobile=false,unsupported=false,small=false) {
+async function open(browser,base,mobile=false,unsupported=false,small=false,visitor=null) {
   const context=await browser.newContext({viewport:mobile?(small?{width:375,height:667}:{width:390,height:844}):{width:1280,height:1000},deviceScaleFactor:mobile?2:1,isMobile:mobile,hasTouch:mobile});
+  if(visitor)await context.addInitScript(visitor=>{
+    const key='roles.web-preview.v1';
+    if(!localStorage.getItem(key))localStorage.setItem(key,JSON.stringify({version:1,visitor,draws:{},rounds:{}}));
+  },visitor);
   if(unsupported)await context.addInitScript(()=>{Object.defineProperty(globalThis,'WebAssembly',{value:undefined,configurable:true});});
+  await context.addInitScript(()=>{
+    globalThis.__cuePlays=[];
+    const play=HTMLMediaElement.prototype.play;
+    HTMLMediaElement.prototype.play=function(){globalThis.__cuePlays.push({src:this.src,gesture:navigator.userActivation.hasBeenActive});return play.call(this);};
+  });
   const page=await context.newPage(),errors=[],requests=[];
   page.on('pageerror',error=>errors.push(error.message));
   page.on('console',message=>{if(message.type()==='error')errors.push(message.text());});
   page.on('request',request=>requests.push(request.url()));
   await page.clock.install({time:new Date('2026-11-24T20:00:00+08:00')});
+  // Freeze the empty document before navigation, so a slow Canvas render cannot miss the target.
+  await page.clock.pauseAt(new Date('2026-11-24T20:00:01+08:00'));
   await page.goto(base,{waitUntil:'networkidle'});
   assert.equal(await page.evaluate(()=>rolesPreview.game.store.state.status),'ready');
-  await page.clock.pauseAt(new Date('2026-11-24T20:01:00+08:00'));
+  await page.clock.runFor(32);
+  assert.equal(await page.evaluate(()=>__cuePlays.length),0,"Preloading never autoplays");
   return {page,context,errors,requests,touch:mobile?await context.newCDPSession(page):null};
+}
+async function entryScales(page) {
+  return page.evaluate(() => {
+    const ctx=rolesPreview.requireGame('js/draw.js').getCtx(), original=ctx.scale, samples=[];
+    ctx.scale=function(x,y){samples.push([x,y]);return original.call(this,x,y);};
+    try { rolesPreview.game.render(); } finally { ctx.scale=original; }
+    return samples;
+  });
+}
+async function candidateCaption(page,roleId) {
+  return page.evaluate(roleId=>{
+    const s=rolesPreview.game.store.state,layout=rolesPreview.requireGame('js/layout.js');
+    const ctx=rolesPreview.requireGame('js/draw.js').getCtx(), original=ctx.fillText, samples=[];
+    const role=s.offer.find(role=>role.id===roleId),card=layout.pickCardRect(s.picked.indexOf(roleId));
+    ctx.fillText=function(text,x,y,...rest){
+      if(String(text)===role.tagline)samples.push({text:String(text),x,y,width:this.measureText(String(text)).width});
+      return original.call(this,text,x,y,...rest);
+    };
+    try { rolesPreview.game.render(); } finally { ctx.fillText=original; }
+    return {role:role.id,tagline:role.tagline,card,samples};
+  },roleId);
 }
 async function chooseAndTear(session,name) {
   const {page,touch}=session, g=await geometry(page);
+  assert.ok((await entryScales(page)).some(([x,y])=>x>=0.96&&x<1&&x===y), "Series entry is animating when the first tap is accepted");
   await tap(page,await point(page,72,g.top+158),touch);
   assert.equal((await state(page)).stage,'opening');
   await page.clock.runFor(180);
@@ -68,10 +102,12 @@ async function chooseAndTear(session,name) {
   const start=await point(page,112.5,g.top+159), partial=await point(page,172.5,g.top+159);
   await drag(page,start,partial,touch);
   assert.ok((await state(page)).p>0 && (await state(page)).p<1);
+  assert.ok((await state(page)).tilt > 0 && (await state(page)).tilt <= 8);
   await page.clock.runFor(50);
   const tearing=await shot(page,name+'-tearing');
   await page.clock.runFor(250);
   const retained=(await state(page)).p;assert.ok(retained>0 && retained<0.4);
+  assert.equal((await state(page)).tilt,0, "Packet returns upright without resetting tear progress");
   await drag(page,start,await point(page,277.5,g.top+159),touch);
   await page.clock.runFor(500);
   assert.equal((await state(page)).stage,'ring');
@@ -106,6 +142,14 @@ async function selectAndReveal(session,name,expectPag=true,autoFinish=false) {
   await tap(page,await point(page,pick.card.x+pick.card.w/2,pick.top+pick.card.y+pick.card.h/2),touch);
   const selected=(await state(page)).slot;assert.ok(selected);
   await page.clock.runFor(32); // Render the newly enabled confirmation button before clicking it.
+  let caption;
+  if(name==='desktop'){
+    assert.equal(selected,'surveyor','Desktop fixture exercises the reported surveyor caption');
+    caption=await candidateCaption(page,selected);
+    assert.ok(caption.samples.some(sample=>sample.text===caption.tagline&&
+      sample.x-sample.width/2>=caption.card.x+8&&sample.x+sample.width/2<=caption.card.x+caption.card.w-8),
+      'The complete surveyor tagline fits inside the candidate card');
+  }
   await page.evaluate(()=>rolesPreview.requireGame('js/pag-reveal.js').settled());
   const ready=await page.evaluate(()=>rolesPreview.requireGame('js/pag-reveal.js').status().ready);
   assert.equal(ready,expectPag);
@@ -114,6 +158,7 @@ async function selectAndReveal(session,name,expectPag=true,autoFinish=false) {
   await tap(page,await point(page,button.x,pick.top+button.y),touch);
   await page.clock.runFor(80);
   let saved=await state(page);assert.equal(saved.stage,'reveal');assert.equal(saved.draw.role.id,selected);
+  assert.equal(await page.evaluate(()=>rolesPreview.game.store.state.toast),'','Successful confirmation has no toast covering the title');
   await tap(page,await point(page,187.5,g.top+210),touch);
   assert.equal((await state(page)).stage,'reveal');
   await page.clock.runFor(370);await flush(page);
@@ -125,6 +170,13 @@ async function selectAndReveal(session,name,expectPag=true,autoFinish=false) {
   await page.evaluate(()=>rolesPreview.requireGame('js/pag-reveal.js').settled());
   saved=await state(page);assert.equal(saved.stage,'');assert.equal(saved.draw.role.id,selected);
   assert.equal(await page.evaluate(()=>rolesPreview.requireGame('js/pag-reveal.js').status().ready),false);
+  assert.equal(await page.evaluate(()=>rolesPreview.game.store.state.toast),'','Today title remains unobstructed after reveal');
+  if(caption)results.push({case:'Surveyor tagline is complete and fits; confirmation and today page have no success toast',caption});
+  const cues=await page.evaluate(()=>__cuePlays);
+  assert.ok(cues.every(cue=>cue.gesture), 'Every cue follows a real mouse/touch gesture');
+  assert.equal(cues.filter(cue=>cue.src.endsWith('/sfx/tear.wav')).length,1);
+  assert.equal(cues.filter(cue=>cue.src.endsWith('/sfx/flip.wav')).length,3);
+  assert.equal(cues.filter(cue=>cue.src.endsWith('/sfx/settle.wav')).length,1);
   results.push({case:name+' real card selection, reveal, early-tap guard and '+(autoFinish?'auto-finish':'click-through'),mode,role:selected,screenshot});
 }
 async function zone(page,id) {
@@ -170,14 +222,23 @@ async function main() {
   let browser;
   try {
     for(const address of ['/.env','/api/health','/server/src/index.ts','/%2e%2e%2fpackage.json'])assert.equal((await fetch(base+address)).status,404);
+    for(const name of ['tear','flip','settle']){const audio=await fetch(base+'/assets/sfx/'+name+'.wav');assert.equal(audio.status,200);assert.equal(audio.headers.get('content-type'),'audio/wav');}
     const wasm=await fetch(base+'/vendor/pag/libpag.wasm');assert.equal(wasm.status,200);assert.equal(wasm.headers.get('content-type'),'application/wasm');
     results.push({case:'Only built preview files are served; WASM has correct MIME; no backend or workspace routes'});
     browser=await chromium.launch({executablePath:await browserExecutable(),headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
-    const desktop=await open(browser,base);
+    // This visitor puts surveyor first on the frozen date, using the unchanged preview offer algorithm.
+    const desktop=await open(browser,base,false,false,false,'surveyor-regression-13');
     const homepage=await shot(desktop.page,'desktop-home');
     assert.ok(desktop.requests.every(address=>new URL(address).origin===base));
     results.push({case:'Desktop preview loads independently with no external API requests',screenshot:homepage});
     await chooseAndTear(desktop,'desktop');await selectAndReveal(desktop,'desktop');
+    const decoded=await desktop.page.evaluate(async()=>{
+      const context=new AudioContext(),result=[];
+      try{for(const name of ['tear','flip','settle']){const bytes=await(await fetch('assets/sfx/'+name+'.wav')).arrayBuffer();const audio=await context.decodeAudioData(bytes);result.push({name,duration:audio.duration,channels:audio.numberOfChannels});}}finally{await context.close();}
+      return result;
+    });
+    assert.ok(decoded.every(cue=>cue.duration>0&&cue.duration<0.3&&cue.channels===1));
+    results.push({case:'Three short cues decode in Chromium; gesture gate, tear, three flips and one settle verified',decoded});
     await clickZone(desktop.page,'task');await desktop.page.clock.runFor(32);assert.equal((await state(desktop.page)).draw.doneCount,1);
     await clickZone(desktop.page,'note');await desktop.page.locator('#note-input').fill('网页体验：开包和揭晓都能操作。');
     await desktop.page.getByRole('button',{name:'保存',exact:true}).click();await desktop.page.clock.runFor(32);
@@ -185,6 +246,7 @@ async function main() {
     const restored=await state(desktop.page);assert.equal(restored.draw.doneCount,1);assert.equal(restored.draw.noteDraft,'网页体验：开包和揭晓都能操作。');
     results.push({case:'Mouse wheel, task check-in and note dialog work; local records survive reload'});
     await clickZone(desktop.page,'tab:calendar');await desktop.page.clock.runFor(32);
+    assert.ok((await entryScales(desktop.page)).some(([x,y])=>x>=0.96&&x<1&&x===y), 'Tab content animates while month navigation stays interactive');
     assert.ok((await state(desktop.page)).calendar.cells.some(cell=>cell.entry&&cell.entry.tasksDone===1));
     const month=(await state(desktop.page)).calendar.month;await clickZone(desktop.page,'prev-month');await desktop.page.clock.runFor(32);assert.notEqual((await state(desktop.page)).calendar.month,month);
     await clickZone(desktop.page,'tab:collection');await desktop.page.clock.runFor(32);

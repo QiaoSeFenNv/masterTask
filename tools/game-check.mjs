@@ -17,6 +17,7 @@ const BASE = process.env.SMOKE_BASE || "http://127.0.0.1:3000";
 const ops = [];
 
 function makeCtx() {
+  const alphaStack = [];
   return {
     canvas: null,
     fillStyle: "#000",
@@ -48,7 +49,7 @@ function makeCtx() {
     rect() {
       ops.push(["rect"]);
     },
-    rotate() {},
+    rotate(angle) { ops.push(["rotate", angle]); },
     scale(x, y) { ops.push(["scale", x, y]); },
     arc() {},
     fill() {
@@ -58,11 +59,11 @@ function makeCtx() {
       ops.push(["stroke"]);
     },
     clip() {},
-    save() {},
-    restore() {},
-    translate() {},
+    save() { alphaStack.push(this.globalAlpha); ops.push(["save"]); },
+    restore() { if (alphaStack.length) this.globalAlpha = alphaStack.pop(); ops.push(["restore"]); },
+    translate(x, y) { ops.push(["translate", x, y]); },
     fillText(str, x, y) {
-      ops.push(["fillText", String(str), x, y]);
+      ops.push(["fillText", String(str), x, y, this.globalAlpha]);
     },
     measureText(str) {
       return { width: String(str).length * 6 };
@@ -98,6 +99,8 @@ function fakeOffscreen({ width, height }) {
 
 const storage = new Map();
 const toasts = [];
+const vibrations = [];
+let drawRequests = 0;
 
 const fakeWx = {
   getStorageSync: (k) => (storage.has(k) ? storage.get(k) : ""),
@@ -115,6 +118,7 @@ const fakeWx = {
     safeArea: { top: 44, bottom: 778 },
   }),
   request({ url, method = "GET", data, header, success, fail }) {
+    if (method === "POST" && new URL(url).pathname === "/api/draw") drawRequests++;
     fetch(url, {
       method,
       headers: header,
@@ -127,7 +131,7 @@ const fakeWx = {
       .catch((e) => fail({ errMsg: String(e) }));
   },
   showToast: (o) => toasts.push(o.title),
-  vibrateShort: () => {},
+  vibrateShort: (options) => vibrations.push(options),
   onTouchStart: () => {},
   onTouchMove: () => {},
   onTouchEnd: () => {},
@@ -264,12 +268,27 @@ const run = async () => {
     const packview = require(resolve(ROOT, "game/js/packview.js"));
 
     ops.length = 0;
-    app.render();
+    const packEntryAt = Date.now();
+    app.render(packEntryAt);
+    check("选系列首次入场从 0.96 缩放和零透明度开始",
+      ops.some((o) => o[0] === "scale" && o[1] === 0.96) &&
+      ops.some((o) => o[0] === "fillText" && o[1] === "今天的卡包" && o[4] === 0));
     check("没落定时先让人挑卡包", store.stage() === "pack", store.stage());
     const pk = ops.filter((o) => o[0] === "fillText").map((o) => o[1]);
     check("三个系列都画出来了", ["深海", "暮色", "晨曦"].every((n) => pk.includes(n)), pk.slice(0, 14).join("|"));
     check("候选一共十张", store.state.offer.length === 10, "offer=" + store.state.offer.length);
     check("选包阶段看不到角色名", !store.state.offer.some((o) => pk.includes(o.name)), "");
+
+    ops.length = 0;
+    app.render(packEntryAt + 110);
+    check("入场中间帧同时淡入和缩放",
+      ops.some((o) => o[0] === "scale" && o[1] > 0.96 && o[1] < 1) &&
+      ops.some((o) => o[0] === "fillText" && o[1] === "今天的卡包" && o[4] > 0 && o[4] < 1));
+    ops.length = 0;
+    app.render(packEntryAt + 220);
+    check("220ms 后入场达到原尺寸和完整透明度",
+      ops.some((o) => o[0] === "scale" && o[1] === 1) &&
+      ops.some((o) => o[0] === "fillText" && o[1] === "今天的卡包" && o[4] === 1));
 
     /* 点中间的「暮色」 */
     app.dispatch(187.5, layout.contentTop(vp) + 150);
@@ -291,6 +310,43 @@ const run = async () => {
     ops.length = 0;
     app.render();
     check("撕开时有画东西", ops.length > 0, "ops=" + ops.length);
+
+    /* 在真实触摸路径中验证倾斜与撕口分别推进。 */
+    {
+      const originalTear = store.state.anim;
+      store.state.anim = { ...originalTear };
+      const packet = openingPack.tearRect(layout.contentTop(vp));
+      const finger = (x) => ({ touches: [{ clientX: x, clientY: packet.y + packet.h / 2 }] });
+      const center = packet.x + packet.w / 2;
+      app.onTouchStart(finger(center));
+      app.onTouchMove(finger(center - 160));
+      check("向左把玩最多倾斜 -8°，不会倒撕包口", store.state.anim.tilt === -8 && store.state.anim.p === 0);
+      app.onTouchEnd({ canceled: true });
+      const returnAt = store.state.anim.tiltAt;
+      store.tickTear(returnAt + 130);
+      check("松手或取消触摸后倾斜缓动回正", store.state.anim.tilt > -8 && store.state.anim.tilt < 0);
+      store.tickTear(returnAt + 260);
+      check("回正后停止倾斜动画且撕口仍为零", store.state.anim.tilt === 0 && !store.state.anim.tiltAt && store.state.anim.p === 0);
+      app.onTouchStart(finger(center));
+      app.onTouchMove(finger(center + 60));
+      check("向右倾斜不影响原来的撕开距离", store.state.anim.tilt > 0 && store.state.anim.tilt <= 8 && Math.abs(store.state.anim.p - 0.4) < 0.0001);
+      ops.length = 0;
+      app.render();
+      let angle = 0, stack = [], translatedPaper = false;
+      for (const op of ops) {
+        if (op[0] === "save") stack.push(angle);
+        if (op[0] === "restore") angle = stack.pop();
+        if (op[0] === "rotate") angle += op[1];
+        if (op[0] === "translate" && op[1] > 0 && op[1] <= 30 && op[2] < 0 && Math.abs(angle) < 0.0001) translatedPaper = true;
+      }
+      check("包身使用旋转而撕下来的纸条保持平移", ops.some((op) => op[0] === "rotate" && op[1] > 0) && translatedPaper);
+      app.onTouchMove(finger(center + 160));
+      check("向右最多倾斜 8°且按原距离撕通", store.state.anim.tilt === 8 && store.state.anim.p === 1 && Boolean(store.state.anim.doneAt));
+      app.onTouchEnd({ changedTouches: [{ clientX: center + 160, clientY: packet.y + packet.h / 2 }] });
+      store.tickTear(store.state.anim.tiltAt + 260);
+      check("撕通后包身回正，纸条飘走阶段与撕口不变", store.state.anim.tilt === 0 && store.state.anim.p === 1 && store.stage() === "tear");
+      store.state.anim = originalTear;
+    }
 
     /* 撕开要玩家自己划：没划完不许进环形 */
     {
@@ -315,7 +371,10 @@ const run = async () => {
       );
 
       // 再划满剩下的部分，就撕通
+      const beforeTearCue = vibrations.length;
       store.swipeTear(pkT.TEAR_SWIPE);
+      store.swipeTear(pkT.TEAR_SWIPE);
+      check("撕通只触发一次轻震动", vibrations.length === beforeTearCue + 1 && vibrations[vibrations.length - 1].type === "light");
       check("划满整条包口就撕通", store.state.anim.p === 1 && Boolean(store.state.anim.doneAt), String(store.state.anim.p));
       check("刚撕通还不能立刻进环形（那条纸还在飘）", store.stage() === "tear", store.stage());
     }
@@ -327,6 +386,9 @@ const run = async () => {
     ops.length = 0;
     app.render();
     check("环形画出来了", ops.length > 0, "ops=" + ops.length);
+    check("环下方显示第 1 / 10 张和正前方牌名",
+      ops.some((o) => o[0] === "fillText" && o[1] === "第 1 / 10 张") &&
+      ops.some((o) => o[0] === "fillText" && o[1] === store.state.offer[0].name));
 
     /* 环是一圈立着的牌：十张全在环上，近大远小，正前方的最后画 */
     {
@@ -466,6 +528,14 @@ const run = async () => {
         JSON.stringify([before2, after2])
       );
       check("拖动不算点击", store.state.picked.length === pickedBefore, String(store.state.picked.length));
+      ops.length = 0;
+      app.render();
+      const movedRing = require(resolve(ROOT, "game/js/pack.js")).ring(store.state.offer.length, store.state.ringSpin, layout.contentTop(vp));
+      const movedFront = movedRing[movedRing.length - 1];
+      check("拖动后序号和牌名随正前方卡更新",
+        movedFront.i !== 0 &&
+        ops.some((o) => o[0] === "fillText" && o[1] === "第 " + (movedFront.i + 1) + " / 10 张") &&
+        ops.some((o) => o[0] === "fillText" && o[1] === store.state.offer[movedFront.i].name));
 
       // 转回原处，后面的命中测试才好算
       store.state.ringSpin = 0;
@@ -495,6 +565,7 @@ const run = async () => {
     {
       const stepA = (Math.PI * 2) / store.state.offer.length; // 一张牌占的角度
       const want = [];
+      const beforeFlipCues = vibrations.length;
       for (let k = 0; k < 3; k++) {
         const role = store.state.offer[k];
         // ringSpin = -k * stepA，这张就正好转到正前方
@@ -504,6 +575,7 @@ const run = async () => {
         if (pt) app.dispatch(pt.x, pt.y);
         want.push(role.id);
       }
+      check("三次翻面对应三次轻震动", vibrations.length === beforeFlipCues + 3 && vibrations.slice(beforeFlipCues).every((cue) => cue.type === "light"));
       check("点了三张就记三张", store.state.picked.length === 3, JSON.stringify(store.state.picked));
       check("点的顺序和点的一致", store.state.picked.join(",") === want.join(","), store.state.picked.join(","));
       check("点满三张进入飞行", store.state.anim.kind === "top", store.state.anim.kind);
@@ -541,8 +613,11 @@ const run = async () => {
     check("点候选卡能选中", store.state.slot === target, store.state.slot);
     app.render();
 
+    const beforeConfirmCue = vibrations.length, beforeDrawRequests = drawRequests;
+    app.dispatch(pb.x + pb.w / 2, pb.y + pb.h / 2);
     app.dispatch(pb.x + pb.w / 2, pb.y + pb.h / 2);
     await sleep(700);
+    check("重复确认只发一个抽卡请求且只震动一次", drawRequests === beforeDrawRequests + 1 && vibrations.length === beforeConfirmCue + 1 && vibrations[vibrations.length - 1].type === "light", JSON.stringify({ requests: drawRequests - beforeDrawRequests, cues: vibrations.slice(beforeConfirmCue), stage: store.stage(), shifting: store.state.shifting }));
     check(
       "落定的就是选中的那张",
       store.state.draw && store.state.draw.role.id === target,
@@ -599,10 +674,14 @@ const run = async () => {
   ops.length = 0;
   app.render();
   check("日历能渲染", ops.length > 0);
+  check("切 tab 后内容从 0.96 淡入且导航仍可点击",
+    ops.some((o) => o[0] === "scale" && o[1] === 0.96) &&
+    ops.some((o) => o[0] === "fillText" && o[1] === "日历" && o[4] === 1));
 
   /* 8. 上一月 */
   const m0 = store.state.calendar.month;
-  app.dispatch(layout.PAD + 5, layout.contentTop(vp) + 12);
+  const monthButton = view.renderCalendar(vp, store.state).zones.find((zone) => zone.id === "prev-month").rect;
+  app.dispatch(monthButton.x + monthButton.w / 2, monthButton.y + monthButton.h / 2);
   await sleep(900);
   check("上一月请求完成", store.state.calendar.month !== m0 && !store.state.calendar.loading, store.state.calendar.month + "/" + store.state.calendar.loading);
 

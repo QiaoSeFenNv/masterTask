@@ -18,6 +18,8 @@ var listeners = [];
 var kicked = false;
 
 var PACK_IDS = ["deep", "dusk", "dawn"];
+var SOUND_FILES = {tear:"sfx/tear.wav",flip:"sfx/flip.wav",settle:"sfx/settle.wav"};
+var sounds = {};
 
 /** 要加载的全部文件：键名 -> 文件名 */
 var FILES = {};
@@ -101,8 +103,59 @@ function pending() {
   return n;
 }
 
+/** Three cached short sounds; loading does not start playback. */
+function sound(name) {
+  if (!Object.prototype.hasOwnProperty.call(SOUND_FILES, name)) return null;
+  if (sounds[name]) return sounds[name].state === "fail" ? null : sounds[name].audio;
+  var w;
+  try { w = env.getWx(); } catch (e) { return null; }
+  if (!w || typeof w.createInnerAudioContext !== "function") return null;
+  var entry = {audio:null,state:"loading"};
+  sounds[name] = entry;
+  try {
+    var audio = w.createInnerAudioContext();
+    entry.audio = audio;
+    audio.autoplay = false;
+    audio.loop = false;
+    audio.volume = 0.18;
+    audio.obeyMuteSwitch = true;
+    if (typeof audio.onCanplay === "function") audio.onCanplay(function () { entry.state = "ok"; });
+    if (typeof audio.onError === "function") audio.onError(function () {
+      entry.state = "fail";
+      entry.audio = null;
+      try { audio.destroy(); } catch (e) { /* Already unavailable. */ }
+    });
+    audio.src = BASE + SOUND_FILES[name];
+    return entry.audio;
+  } catch (e) {
+    entry.state = "fail";
+    if (entry.audio) { try { entry.audio.destroy(); } catch (ignored) {} }
+    entry.audio = null;
+    return null;
+  }
+}
+function preloadSounds() { Object.keys(SOUND_FILES).forEach(sound); }
+function stopSounds() {
+  Object.keys(sounds).forEach(function (name) {
+    var audio = sounds[name].audio;
+    if (audio) { try { audio.stop(); } catch (e) { /* Optional sound. */ } }
+  });
+}
+function releaseSounds() {
+  Object.keys(sounds).forEach(function (name) {
+    var audio = sounds[name].audio;
+    if (audio) { try { audio.destroy(); } catch (e) { /* Optional sound. */ } }
+  });
+  sounds = {};
+}
+
 module.exports = {
   preload: preload,
+  preloadSounds: preloadSounds,
+  sound: sound,
+  stopSounds: stopSounds,
+  releaseSounds: releaseSounds,
+  SOUND_FILES: SOUND_FILES,
   pack: pack,
   bg: bg,
   onLoad: onLoad,

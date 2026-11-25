@@ -19,12 +19,17 @@ var assets = require("./assets.js");
 var animation = require("./animation.js");
 var pack = require("./pack.js");
 var pagReveal = require("./pag-reveal.js");
+var sfx = require("./sfx.js");
 
 var canvas = null;
 var zones = [];
 var drag = null;
 var openedKeyboard = false;
 var lastPhase = "";
+var ENTRY_MS = 220;
+var entryKey = "";
+var entryAt = 0;
+var entryFrame = { scale: 1, opacity: 1, cx: 0, cy: 0, tab: "", kind: "", busy: false };
 var frameLoop = animation.createLoop({
   request: function (callback) { return env.requestFrame(callback, canvas); },
   cancel: env.cancelFrame,
@@ -93,6 +98,53 @@ function countOwned(state) {
   return n;
 }
 
+/** 页面入场使用同一个时钟；揭晓末段衔接今日卡，不再重新闪一下。 */
+function sampleEntry(vp, state, kind, time) {
+  var key = state.tab;
+  if (state.tab === "today") {
+    key += state.draw ? ":draw:" + state.draw.date + ":" + state.draw.role.id :
+      state.status === "ready" && state.offer.length ? ":pack" : ":" + state.status;
+  }
+  if (key !== entryKey) {
+    entryKey = key;
+    entryAt = kind === "reveal" ? state.anim.at + pack.REVEAL_MS - ENTRY_MS : time;
+  }
+  // 提前点继续时立即入场；已经进入揭晓淡出末段则接着当前进度。
+  if (entryFrame.kind === "reveal" && kind !== "reveal" && time < entryAt) entryAt = time;
+  var p = animation.tween(0, 1, entryAt, ENTRY_MS, "outCubic", time);
+  entryFrame.opacity = p;
+  entryFrame.scale = 0.96 + 0.04 * p;
+  entryFrame.cx = vp.width / 2;
+  entryFrame.cy = layout.contentTop(vp) + layout.contentH(vp) / 2;
+  entryFrame.tab = state.tab;
+  entryFrame.kind = kind;
+  entryFrame.busy = time < entryAt + ENTRY_MS;
+}
+function beginEntry() {
+  var c = draw.getCtx();
+  c.save();
+  c.translate(entryFrame.cx, entryFrame.cy);
+  c.scale(entryFrame.scale, entryFrame.scale);
+  c.translate(-entryFrame.cx, -entryFrame.cy);
+  c.globalAlpha *= entryFrame.opacity;
+}
+function entryZones(list) {
+  if (entryFrame.scale === 1) return list;
+  return list.map(function (zone) {
+    var r = zone.rect, k = entryFrame.scale;
+    return Object.assign({}, zone, { rect: Object.assign({}, r, {
+      x: entryFrame.cx + (r.x - entryFrame.cx) * k,
+      y: entryFrame.cy + (r.y - entryFrame.cy) * k,
+      w: r.w * k, h: r.h * k,
+    }) });
+  });
+}
+function entryPoint(x, y, kind) {
+  if (entryFrame.tab !== store.state.tab || entryFrame.kind !== kind) return {x:x,y:y};
+  return {x:entryFrame.cx + (x-entryFrame.cx)/entryFrame.scale,
+    y:entryFrame.cy + (y-entryFrame.cy)/entryFrame.scale};
+}
+
 function render(time) {
   return animation.withTime(time, paint);
 }
@@ -123,6 +175,7 @@ function paint() {
 
   // 开卡包过场是全屏的，有它就不画标题和换背景按钮
   var packStage = st.tab === "today" && st.status === "ready" ? store.stage() : "";
+  sampleEntry(v, st, packStage, time);
   // 生成的外景整页淡铺：过场里跟着玩家挑的系列，平时按时段
   if (packStage && st.anim && st.anim.series) backdrop.pin(st.anim.series);
   else backdrop.unpin();
@@ -143,12 +196,14 @@ function paint() {
   // 揭晓淡出时露出的任务内容仍限制在内容区，不能穿过底部导航。
   if (packStage === "reveal") draw.clipRect(0, layout.contentTop(v), v.width, layout.contentH(v));
   var result;
+  beginEntry();
   if (st.tab === "today") result = view.renderToday(v, st);
   else if (st.tab === "calendar") result = view.renderCalendar(v, st);
   else result = view.renderCollection(v, st);
+  draw.restore();
   if (packStage === "reveal") draw.restore();
 
-  var list = (result && result.zones) || [];
+  var list = entryZones((result && result.zones) || []);
   var contentH = (result && result.contentH) || layout.contentH(v);
   st.scrollMax = Math.max(0, contentH - layout.contentH(v));
   if (st.scroll > st.scrollMax) st.scroll = st.scrollMax;
@@ -168,12 +223,16 @@ function paint() {
 
   // 开卡包过场画在内容上方；揭晓的最后一段透出下面的任务页。
   if (packStage) {
+    // 选包放大和 PAG 自带完整时间轴，页面入场不叠加到这两段。
+    var enteringPack = packStage !== "opening" && packStage !== "reveal";
+    if (enteringPack) beginEntry();
     var packRes = packview.render(v, st);
-    zones = (packRes.zones || []).concat(tabZones);
+    if (enteringPack) draw.restore();
+    zones = (enteringPack ? entryZones(packRes.zones || []) : packRes.zones || []).concat(tabZones);
     if (packStage === "reveal") st.scrollMax = 0;
   }
   return Boolean(
-    starfield.isFading() || backdrop.isFading() ||
+    entryFrame.busy || starfield.isFading() || backdrop.isFading() ||
     (packStage && (recoiling || packview.busy(st))) ||
     (st.toast && time - st.toastAt < 2000)
   );
@@ -217,7 +276,12 @@ function firstTouch(e) {
 function onTouchStart(e) {
   var t = firstTouch(e);
   if (!t) return;
+  sfx.unlock();
   var p = toDesign(t);
+  var packet = tearDragging(store.state) ? pack.tearRect(layout.contentTop(env.viewport())) : null;
+  var packetPoint = entryPoint(p.x, p.y, "tear");
+  var tilting = packet && packetPoint.x >= packet.x && packetPoint.x <= packet.x + packet.w &&
+    packetPoint.y >= packet.y && packetPoint.y <= packet.y + packet.h;
   drag = {
     startX: p.x,
     startY: p.y,
@@ -227,7 +291,10 @@ function onTouchStart(e) {
     scroll: store.state.scroll,
     moved: false,
     turned: false,
+    tilting: Boolean(tilting),
+    tilt: tilting ? store.state.anim.tilt || 0 : 0,
   };
+  if (tilting) store.tiltTear(drag.tilt);
 }
 
 /** 环形阶段：横向拖动 = 转动转盘 */
@@ -259,6 +326,7 @@ function onTouchMove(e) {
   // 撕包口：只认往右的那一小段位移，撕口严格跟着手指走
   if (tearDragging(store.state)) {
     var step = p.x - (drag.prevX == null ? drag.startX : drag.prevX);
+    if (drag.tilting) store.tiltTear(drag.tilt + dx / pack.TEAR_SWIPE * 8);
     if (step > 0) store.swipeTear(step);
     drag.prevX = p.x;
     if (Math.abs(dx) > 4 || Math.abs(dy) > 4) drag.moved = true;
@@ -326,7 +394,8 @@ function dispatch(x, y) {
 
   // 环形阶段要靠几何命中（卡片是转着的，zones 里存不下来）
   if (st.tab === "today" && st.status === "ready" && !st.draw && st.anim.kind === "ring") {
-    var hitId = packview.hitRing(env.viewport(), st, x, y);
+    var ringPoint = entryPoint(x, y, "ring");
+    var hitId = packview.hitRing(env.viewport(), st, ringPoint.x, ringPoint.y);
     if (hitId) {
       store.flipCard(hitId);
       return;
@@ -510,12 +579,14 @@ function boot() {
   // 生成的图（卡包外表 + 卡包背景）开始加载；到了就重画一帧
   assets.onLoad(requestFrame);
   assets.preload();
+  assets.preloadSounds();
+  sfx.resume();
 
   var runtime = w && typeof w.createCanvas === "function" ? w.createCanvas() : null;
   if (runtime) setCanvas(runtime);
 
-  if (w && typeof w.onHide === "function") w.onHide(function () { frameLoop.pause(); pagReveal.pause(); });
-  if (w && typeof w.onShow === "function") w.onShow(function () { pagReveal.resume(); frameLoop.resume(); });
+  if (w && typeof w.onHide === "function") w.onHide(function () { frameLoop.pause(); pagReveal.pause(); sfx.pause(); });
+  if (w && typeof w.onShow === "function") w.onShow(function () { pagReveal.resume(); frameLoop.resume(); sfx.resume(); });
 
   if (w && typeof w.onTouchStart === "function") {
     w.onTouchStart(onTouchStart);

@@ -6,6 +6,7 @@
 var api = require("./api.js");
 var layout = require("./layout.js");
 var pack = require("./pack.js");
+var sfx = require("./sfx.js");
 var animation = require("./animation.js");
 
 var state = {
@@ -128,7 +129,7 @@ function chooseSeries(seriesId) {
 function enterTear() {
   var a = state.anim;
   if (!a || a.kind !== "opening") return;
-  state.anim = {kind:"tear",at:a.at+pack.OPEN_MS,series:a.series,p:0,doneAt:0,recoilAt:0};
+  state.anim = {kind:"tear",at:a.at+pack.OPEN_MS,series:a.series,p:0,doneAt:0,recoilAt:0,tilt:0,tiltAt:0};
   emit();
 }
 
@@ -144,8 +145,25 @@ function swipeTear(dx) {
   if (a.p >= 1) {
     a.p = 1;
     a.doneAt = animation.now(); // 撕通了，那一条开始飘走
+    returnTearTilt(a);
+    sfx.play("tear");
   }
   emit();
+}
+
+/** 整包倾斜独立于撕口进度；手势只改变角度，不改变撕开的距离。 */
+function tiltTear(degrees) {
+  var a = state.anim;
+  if (!a || a.kind !== "tear" || a.doneAt) return;
+  a.tiltAt = 0;
+  a.tilt = Math.max(-8, Math.min(8, degrees));
+  emit();
+}
+
+function returnTearTilt(a) {
+  if (!a.tilt) return;
+  a.tiltFrom = a.tilt;
+  a.tiltAt = animation.now() || 1;
 }
 
 /**
@@ -159,17 +177,27 @@ function releaseTear() {
   a.recoilFrom = p;
   a.recoilTo = Math.max(0, p - 0.25);
   a.recoilAt = animation.now() || 1;
+  returnTearTilt(a);
   emit();
 }
 
 /** 回弹缓动，由 app 每帧推一次；真的在动就返回 true（要连续出帧） */
 function tickTear(tms) {
   var a = state.anim;
-  if (!a || a.kind !== "tear" || !a.recoilAt) return false;
-  var t = animation.progress(a.recoilAt, 260, tms);
-  a.p = animation.tween(a.recoilFrom, a.recoilTo, a.recoilAt, 260, "outCubic", tms);
-  if (t >= 1) a.recoilAt = 0;
-  return true;
+  if (!a || a.kind !== "tear") return false;
+  var moving = false;
+  if (a.recoilAt) {
+    var t = animation.progress(a.recoilAt, 260, tms);
+    a.p = animation.tween(a.recoilFrom, a.recoilTo, a.recoilAt, 260, "outCubic", tms);
+    if (t >= 1) a.recoilAt = 0;
+    moving = true;
+  }
+  if (a.tiltAt) {
+    a.tilt = animation.tween(a.tiltFrom, 0, a.tiltAt, 260, "outCubic", tms);
+    if (animation.progress(a.tiltAt, 260, tms) >= 1) a.tiltAt = 0;
+    moving = true;
+  }
+  return moving;
 }
 
 /** 撕开动画飘完之后进环形；由 app 在帧里推进时调用 */
@@ -206,6 +234,7 @@ function flipCard(roleId) {
   }
   state.picked.push(roleId);
   state.pickedAt[roleId] = animation.now();
+  sfx.play("flip");
   emit();
   if (state.picked.length === 3) {
     // 点满三张：等最后一张翻完，再飞到上方成候选排
@@ -257,6 +286,7 @@ function confirmPick() {
       state.scroll = 0;
       state.noteDraft = state.draw.noteDraft;
       state.shifting = false;
+      sfx.play("settle");
       emit();
       return loadStats();
     })
@@ -561,6 +591,7 @@ module.exports = {
   chooseSeries: chooseSeries,
   enterTear: enterTear,
   swipeTear: swipeTear,
+  tiltTear: tiltTear,
   releaseTear: releaseTear,
   tickTear: tickTear,
   enterRing: enterRing,

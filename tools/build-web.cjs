@@ -59,6 +59,11 @@ export function requireGame(requested, parent = '') {
     const name = kind + '-' + series + '.jpg';
     await fs.copyFile(path.join(ROOT, 'game/assets', name), path.join(OUTPUT, 'assets', name));
   }
+  for (const file of Object.values(require('../game/js/assets.js').SOUND_FILES)) {
+    const target=path.join(OUTPUT,'assets',file);
+    await fs.mkdir(path.dirname(target),{recursive:true});
+    await fs.copyFile(path.join(ROOT,'game/assets',file),target);
+  }
   await fs.writeFile(path.join(OUTPUT, 'vendor/pag/libpag.wasm'),
     zlib.brotliDecompressSync(await fs.readFile(path.join(ROOT, 'game/vendor/pag/libpag.wasm.br'))));
   for (const name of ['LICENSE.txt', 'NOTICE.txt'])

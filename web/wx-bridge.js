@@ -112,6 +112,20 @@ export function installWechatBridge({canvas, surface, api, modal}) {
     createCanvas() { if (!mainCreated) { mainCreated = true; return canvas; } return secondaryCanvas(); },
     createOffscreenCanvas(options) { return secondaryCanvas(options.width, options.height); },
     createImage() { return new Image(); },
+    createInnerAudioContext() {
+      const audio=new Audio();audio.preload='auto';let alive=true;
+      return {
+        get src(){return audio.src;},set src(value){audio.src=assetURL(value);},
+        get autoplay(){return audio.autoplay;},set autoplay(value){audio.autoplay=value;},
+        get loop(){return audio.loop;},set loop(value){audio.loop=value;},
+        get volume(){return audio.volume;},set volume(value){audio.volume=value;},
+        play(){if(!alive)return;const playing=audio.play();if(playing)playing.catch(()=>{});},
+        stop(){audio.pause();try{audio.currentTime=0;}catch(_){}},
+        destroy(){if(!alive)return;alive=false;audio.pause();audio.removeAttribute('src');audio.load();},
+        onCanplay(callback){audio.addEventListener('canplay',()=>{if(alive)callback();});},
+        onError(callback){audio.addEventListener('error',()=>{if(alive)callback({errMsg:'Audio asset unavailable'});});},
+      };
+    },
     base64ToArrayBuffer(text) {
       const raw = atob(text), bytes = new Uint8Array(raw.length);
       for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
