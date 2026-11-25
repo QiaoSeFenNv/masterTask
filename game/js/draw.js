@@ -24,6 +24,19 @@ function getCanvas() {
   return canvas;
 }
 
+/** Scope the shared drawing helpers to a bitmap canvas. The callback must be synchronous. */
+function withCanvas(target, callback) {
+  var previousCanvas = canvas;
+  var previousContext = ctx;
+  try {
+    init(target);
+    return callback(ctx);
+  } finally {
+    canvas = previousCanvas;
+    ctx = previousContext;
+  }
+}
+
 /** Design units -> device pixels. */
 function unit(n) {
   var s = env.scale();
@@ -260,6 +273,7 @@ module.exports = {
   init: init,
   getCtx: getCtx,
   getCanvas: getCanvas,
+  withCanvas: withCanvas,
   unit: unit,
   clear: clear,
   roundRect: roundRect,

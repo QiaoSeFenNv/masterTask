@@ -10,6 +10,9 @@ var theme = require("./theme.js");
 var layout = require("./layout.js");
 var pack = require("./pack.js");
 var assets = require("./assets.js");
+var animation = require("./animation.js");
+var effects = require("./effects.js");
+var pagReveal = require("./pag-reveal.js");
 
 var W = layout.W;
 var PAD = layout.PAD;
@@ -17,7 +20,7 @@ var PAD = layout.PAD;
 /* ---------------- 小工具 ---------------- */
 
 function now() {
-  return Date.now();
+  return animation.now();
 }
 
 function since(anim) {
@@ -56,7 +59,7 @@ function pickedRolesOf(state) {
 /** 卡背：生成的包面图 + 内描边；图没到就用系列渐变兜底 */
 function cardBack(x, y, w, h, r, series, alpha) {
   var c = draw.getCtx();
-  var a = alpha == null ? 1 : alpha;
+  var a = (alpha == null ? 1 : alpha) * c.globalAlpha;
   c.save();
 
   var img = assets.pack(series.id);
@@ -95,121 +98,69 @@ function cardBack(x, y, w, h, r, series, alpha) {
 }
 
 /** 卡面：角色自己的渐变 + emoji + 名字 */
-function cardFace(x, y, w, h, r, role, opts) {
-  var o = opts || {};
-  var c = draw.getCtx();
-  var s = o.scale == null ? 1 : o.scale;
-
-  draw.fillGradientRect(x, y, w, h, role.gradient || [theme.packTop, theme.packBottom], 150, r);
-  strokeRound(x, y, w, h, r, o.border || theme.frame, o.borderWidth || 1);
-
-  draw.text(role.emoji || "🎴", x + w / 2, y + h * 0.42, {
-    size: (o.emojiSize || 26) * s,
-    align: "center",
-  });
-  draw.text(role.name || "", x + w / 2, y + h * 0.62, {
-    size: (o.nameSize || 13) * s,
-    weight: "600",
-    serif: true,
-    color: "#ffffff",
-    align: "center",
-    shadow: { color: "rgba(0,0,0,0.35)", blur: 8, y: 1 },
-  });
-  if (o.tagline !== false) {
-    draw.text(role.tagline || "", x + w / 2, y + h * 0.74, {
-      size: (o.taglineSize || 8.5) * s,
-      color: "rgba(255,255,255,0.76)",
-      align: "center",
-    });
-  }
-}
+var cardFace = require("./cardface.js").paint;
 
 /* ---------------- 阶段一：选系列 ---------------- */
 
-function renderSeriesPick(vp, state) {
-  var zones = [];
-  var top = layout.contentTop(vp);
-  var series = pack.SERIES;
-  var gap = 12;
-  var w = (layout.innerW() - gap * (series.length - 1)) / series.length;
-  var h = 208;
-
-  draw.text("今天的卡包", W / 2, top + 6, {
-    size: 15,
-    weight: "600",
-    color: theme.text,
-    align: "center",
+/** A shared packet surface for the picker and its movement into the tear stage. */
+function paintSeriesPacket(s, rect, opacity, labelOpacity) {
+  var x = rect.x, y = rect.y, w = rect.w, h = rect.h;
+  var c = draw.getCtx();
+  c.save();
+  c.globalAlpha = opacity;
+  if (!draw.image(assets.pack(s.id), x, y, w, h, 14, opacity))
+    draw.fillGradientRect(x, y, w, h, [s.top, s.mid, s.bottom], 160, 14);
+  strokeRound(x, y, w, h, 14, theme.frame, 1);
+  strokeRound(x + 5, y + 5, w - 10, h - 10, 11, "rgba(255,255,255,0.18)", 1);
+  c.beginPath();
+  c.moveTo(x + 6, y + 12);
+  for (var k = 0; k <= 10; k++) c.lineTo(x + 6 + ((w - 12) * k) / 10, y + 12 + (k % 2 ? 4 : 0));
+  c.strokeStyle = s.accent;
+  c.globalAlpha = opacity * 0.7;
+  c.lineWidth = 1;
+  c.stroke();
+  var cx = x + w / 2, cy = y + h * 0.52, d = Math.min(w, h) * 0.19;
+  c.beginPath();
+  c.moveTo(cx, cy - d); c.lineTo(cx + d * 0.62, cy); c.lineTo(cx, cy + d); c.lineTo(cx - d * 0.62, cy); c.closePath();
+  c.fillStyle = s.accent;
+  c.globalAlpha = opacity * 0.55;
+  c.fill();
+  draw.text(s.name, cx, y + h - 34, {size:15,weight:"600",serif:true,color:"#ffffff",align:"center",
+    alpha:opacity*labelOpacity,shadow:{color:"rgba(0,0,0,0.55)",blur:10,y:1}});
+  draw.text(s.desc, cx, y + h - 16, {size:9.5,color:"rgba(255,255,255,0.78)",align:"center",
+    alpha:opacity*labelOpacity,shadow:{color:"rgba(0,0,0,0.45)",blur:6,y:0}});
+  c.restore();
+}
+function seriesRect(vp, index, at) {
+  var gap = 12, w = (layout.innerW() - gap * (pack.SERIES.length - 1)) / pack.SERIES.length;
+  return {x:PAD + index*(w+gap),y:layout.contentTop(vp)+54+Math.sin(at/700+index)*2,w:w,h:208};
+}
+function renderSeriesPick(vp, state, options) {
+  options = options || {};
+  var zones = [], top = layout.contentTop(vp);
+  var opacity = options.opacity == null ? 1 : options.opacity;
+  var at = options.at == null ? now() : options.at;
+  draw.text("今天的卡包", W/2, top+6, {size:15,weight:"600",color:theme.text,align:"center",alpha:opacity});
+  draw.text("挑一个，撕开看今天是谁", W/2, top+28, {size:11,color:theme.muted,align:"center",alpha:opacity});
+  pack.SERIES.forEach(function(s,i) {
+    if (s.id === options.skip) return;
+    var rect = seriesRect(vp,i,at);
+    paintSeriesPacket(s,rect,opacity,1);
+    zones.push({id:"series",seriesId:s.id,rect:rect});
   });
-  draw.text("挑一个，撕开看今天是谁", W / 2, top + 28, {
-    size: 11,
-    color: theme.muted,
-    align: "center",
-  });
-
-  var t = now();
-  series.forEach(function (s, i) {
-    // 极轻的呼吸,让三张看着是「活的」
-    var bob = Math.sin(t / 700 + i) * 2;
-    var x = PAD + i * (w + gap);
-    var y = top + 54 + bob;
-
-    if (!draw.image(assets.pack(s.id), x, y, w, h, 14, 1)) {
-      // 图还没加载到时先给渐变，下一帧自然顶上
-      draw.fillGradientRect(x, y, w, h, [s.top, s.mid, s.bottom], 160, 14);
-    }
-    strokeRound(x, y, w, h, 14, theme.frame, 1);
-    strokeRound(x + 5, y + 5, w - 10, h - 10, 11, "rgba(255,255,255,0.18)", 1);
-
-    // 包口的锯齿
-    var c = draw.getCtx();
-    c.save();
-    c.beginPath();
-    c.moveTo(x + 6, y + 12);
-    for (var k = 0; k <= 10; k++) {
-      c.lineTo(x + 6 + ((w - 12) * k) / 10, y + 12 + (k % 2 ? 4 : 0));
-    }
-    c.strokeStyle = s.accent;
-    c.globalAlpha = 0.7;
-    c.lineWidth = 1;
-    c.stroke();
-    c.restore();
-
-    // 包面图中央是刻意的深色凹槽，菱形压在上面正好当「封印」
-    var cx = x + w / 2;
-    var cy = y + h * 0.52;
-    var d = Math.min(w, h) * 0.19;
-    c.save();
-    c.beginPath();
-    c.moveTo(cx, cy - d);
-    c.lineTo(cx + d * 0.62, cy);
-    c.lineTo(cx, cy + d);
-    c.lineTo(cx - d * 0.62, cy);
-    c.closePath();
-    c.fillStyle = s.accent;
-    c.globalAlpha = 0.55;
-    c.fill();
-    c.restore();
-
-    // 名字和描述压在图下面的暗处，图本身没字，这里才是唯一的字
-    draw.text(s.name, cx, y + h - 34, {
-      size: 15,
-      weight: "600",
-      serif: true,
-      color: "#ffffff",
-      align: "center",
-      shadow: { color: "rgba(0,0,0,0.55)", blur: 10, y: 1 },
-    });
-    draw.text(s.desc, cx, y + h - 16, {
-      size: 9.5,
-      color: "rgba(255,255,255,0.78)",
-      align: "center",
-      shadow: { color: "rgba(0,0,0,0.45)", blur: 6, y: 0 },
-    });
-
-    zones.push({ id: "series", seriesId: s.id, rect: { x: x, y: y, w: w, h: h } });
-  });
-
-  return { zones: zones, contentH: layout.contentH(vp) };
+  return {zones:zones,contentH:layout.contentH(vp)};
+}
+function renderOpening(vp, state, anim) {
+  var at = anim.at, s = pack.seriesOf(anim.series), index = pack.SERIES.indexOf(s);
+  renderSeriesPick(vp,state,{skip:s.id,at:at,opacity:animation.tween(1,0,at,280,"outCubic")});
+  var from = seriesRect(vp,index,at);
+  var target = pack.tearRect(layout.contentTop(vp));
+  var rect = {x:animation.tween(from.x,target.x,at,pack.OPEN_MS,"inOutCubic"),
+    y:animation.tween(from.y,target.y,at,pack.OPEN_MS,"inOutCubic"),
+    w:animation.tween(from.w,target.w,at,pack.OPEN_MS,"inOutCubic"),
+    h:animation.tween(from.h,target.h,at,pack.OPEN_MS,"inOutCubic")};
+  paintSeriesPacket(s,rect,1,animation.tween(1,0,at+160,260,"outCubic"));
+  return {zones:[],contentH:layout.contentH(vp)};
 }
 
 /* ---------------- 阶段二：撕开 ---------------- */
@@ -251,11 +202,12 @@ function renderTear(vp, state, anim) {
   var s = pack.seriesOf(anim.series);
   var c = draw.getCtx();
 
-  var w = 150;
-  var h = 210;
+  var packet = pack.tearRect(top);
+  var w = packet.w;
+  var h = packet.h;
   var cx = W / 2;
-  var x0 = cx - w / 2;
-  var y0 = top + 96;
+  var x0 = packet.x;
+  var y0 = packet.y;
   var cw = w;
   var ch = h;
 
@@ -411,7 +363,7 @@ function spinOf(state) {
 function flipOf(state, roleId) {
   var at = (state.pickedAt || {})[roleId];
   if (!at) return 1;
-  return pack.clamp01((now() - at) / (pack.FLIP_MS || 420));
+  return animation.tween(0, 1, at, pack.FLIP_MS, "inOutCubic");
 }
 
 /** 正在翻面吗（需要连续出帧） */
@@ -481,14 +433,14 @@ function renderRing(vp, state, anim) {
     c.globalAlpha = slot.alpha == null ? 1 : slot.alpha;
 
     if (on) {
-      // 点过的：从背面翻到正面（横向压扁再展开）+ 金边
+      // 正反两面都按同一透视宽度缩放，过中点才换卡面。
       var p = flipOf(state, role.id);
-      var k = Math.abs(Math.cos(p * Math.PI)); // 1 → 0 → 1
+      var k = Math.max(0.015, Math.abs(Math.cos(p * Math.PI)));
       var pop = 1 + Math.sin(p * Math.PI) * 0.06;
-      var fw = Math.max(1, cw * k);
-      var fh = ch * (p < 0.5 ? 1 : pop);
+      c.save();
+      c.scale(k, pop);
       if (p < 0.5) {
-        cardBack(-fw / 2, -fh / 2, fw, fh, 14, s, 1);
+        cardBack(-cw / 2, -ch / 2, cw, ch, 14, s, 1);
       } else {
         cardFace(-cw / 2, -ch / 2, cw, ch, 14, role, {
           scale: slot.scale,
@@ -499,6 +451,10 @@ function renderRing(vp, state, anim) {
           taglineSize: 11,
         });
       }
+      c.restore();
+      effects.burst({ x: -cw / 2, y: -ch / 2, w: cw, h: ch },
+        animation.progress(state.pickedAt[role.id] + pack.FLIP_MS / 2, 660),
+        role.accent || theme.gold, slot.i + 1, 10);
     } else {
       cardBack(-cw / 2, -ch / 2, cw, ch, 14, s, 1);
     }
@@ -541,63 +497,46 @@ function renderRing(vp, state, anim) {
 /* ---------------- 阶段四：三张飞到候选排 ---------------- */
 
 function renderTop(vp, state, anim) {
+  // 最后一张翻完之前继续画整个环，不能把等待时间画成三张静止的卡背。
+  if (now() < anim.at) return renderRing(vp, state, anim);
   var top = layout.contentTop(vp);
-  var s = pack.seriesOf(anim.series);
-  var el = since(anim);
-  var p = pack.clamp01(el / pack.TOP_MS);
+  var targetTop = layout.pickTop(vp);
   var c = draw.getCtx();
   var picked = pickedRolesOf(state);
-  var list = pack.ring(state.offer.length, spinOf(state), top);
-
-  // 找到三张在环里的位置,让它们从那儿飞到上方位
+  // 冻结起飞位置，飞行过程中不再跟随环的漂浮重新算起点。
+  var list = pack.ring(state.offer.length, spinOf(state), top, anim.at);
   var from = {};
   list.forEach(function (slot) {
     var role = state.offer[slot.i];
     if (role) from[role.id] = slot;
   });
-
-  draw.text("三张候选", W / 2, top + 8, {
-    size: 12,
-    color: theme.muted,
-    align: "center",
+  draw.text("三张候选", W / 2, targetTop + 8, {
+    size: 12, color: theme.muted, align: "center",
   });
-
   picked.forEach(function (role, i) {
     var dst = layout.pickCardRect(i);
-    var start = from[role.id] || { x: W / 2, y: top + 220, scale: 0.8 };
-    var k = pack.easeBack(p);
-    var x = start.x + (dst.x + dst.w / 2 - start.x) * k;
-    var y = start.y + (top + dst.y + dst.h / 2 - start.y) * k;
-    var sc = start.scale + (1 - start.scale) * k;
-    var cw = dst.w * sc;
-    var ch = dst.h * sc;
-
-    // 飞到一半才翻面
-    var flip = pack.clamp01((p - 0.45) / 0.55);
+    var start = from[role.id] || { x: W / 2, y: top + 220, w: dst.w, h: dst.h, scale: 0.8, wscale: 1 };
+    var x = animation.tween(start.x, dst.x + dst.w / 2, anim.at, pack.TOP_MS, "outBack");
+    var y = animation.tween(start.y, targetTop + dst.y + dst.h / 2, anim.at, pack.TOP_MS, "outBack");
+    var cw = animation.tween(start.w * start.scale * start.wscale, dst.w, anim.at, pack.TOP_MS, "outCubic");
+    var ch = animation.tween(start.h * start.scale, dst.h, anim.at, pack.TOP_MS, "outCubic");
     c.save();
     c.translate(x, y);
-    if (flip < 0.5) {
-      cardBack(-cw / 2, -ch / 2, cw * (1 - flip), ch, 12, s, 1);
-    } else {
-      cardFace(-cw / 2, -ch / 2, cw * flip, ch, 12, role, {
-        scale: sc,
-        emojiSize: 30,
-        nameSize: 15,
-        taglineSize: 9,
-      });
-    }
+    c.scale(cw / dst.w, ch / dst.h);
+    // 卡片已经在环上翻过，保持正面连续飞到候选位。
+    cardFace(-dst.w / 2, -dst.h / 2, dst.w, dst.h, 12, role, {
+      emojiSize: 30, nameSize: 15, taglineSize: 9,
+    });
     c.restore();
   });
-
-  // 飞完就进可选，交给 app 在下一帧调 store 的 enterPick()
-  return { zones: [], contentH: layout.pickContentH(), done: p >= 1 };
+  return { zones: [], contentH: layout.pickContentH(), done: animation.progress(anim.at, pack.TOP_MS) >= 1 };
 }
 
 /* ---------------- 阶段五：从三张里选一张 ---------------- */
 
 function renderPick(vp, state) {
   var zones = [];
-  var top = layout.contentTop(vp);
+  var top = layout.pickTop(vp);
   var picked = pickedRolesOf(state);
   var sel = null;
   for (var i = 0; i < picked.length; i++) {
@@ -637,7 +576,7 @@ function renderPick(vp, state) {
   });
 
   // 说明
-  var ib = layout.offerIntroRect();
+  var ib = layout.pickIntroRect();
   var box = { x: ib.x, y: top + ib.y, w: ib.w, h: ib.h, r: ib.r };
   fillRound(box.x, box.y, box.w, box.h, box.r, theme.softFill);
   strokeRound(box.x, box.y, box.w, box.h, box.r, theme.softBorder, 1);
@@ -693,15 +632,70 @@ function renderPick(vp, state) {
   return { zones: zones, contentH: layout.pickContentH() };
 }
 
+/* ---------------- 阶段六：落定揭晓 ---------------- */
+
+function renderReveal(vp, state, anim) {
+  var c = draw.getCtx();
+  var role = state.draw.role;
+  var top = layout.contentTop(vp);
+  var available = layout.contentH(vp);
+  var source = layout.pickCardRect(anim.slotIndex || 0);
+  var height = Math.min(270, available * 0.58);
+  var width = height * 2 / 3;
+  var curve = "outCubic";
+  var x = animation.tween(source.x + source.w / 2, W / 2, anim.at, pack.REVEAL_FOCUS_MS, curve);
+  var y = animation.tween(layout.pickTop(vp) + source.y + source.h / 2 - 6, top + available * 0.42, anim.at, pack.REVEAL_FOCUS_MS, curve);
+  var w = animation.tween(source.w, width, anim.at, pack.REVEAL_FOCUS_MS, curve);
+  var h = animation.tween(source.h, height, anim.at, pack.REVEAL_FOCUS_MS, curve);
+  var fade = animation.tween(1, 0, anim.at + pack.REVEAL_MS - 180, 180, "inOutCubic");
+  var rect = { x: x - w / 2, y: y - h / 2, w: w, h: h, r: 16 };
+  var accent = role.accent || theme.gold;
+
+  c.save();
+  c.beginPath();
+  c.rect(0, 0, W, layout.contentBottom(vp));
+  c.clip();
+  c.globalAlpha *= fade;
+  c.fillStyle = theme.bg;
+  c.fillRect(0, 0, W, layout.contentBottom(vp));
+  var pagPainted = pagReveal.paint(c, anim, role, { x: x, y: y, w: w, h: h }, animation.progress(anim.at, pack.REVEAL_MS));
+  if (!pagPainted) {
+    effects.halo(rect, accent, animation.tween(0, 1, anim.at, 300));
+    c.save();
+    c.translate(x, y);
+    c.scale(w / width, h / height);
+    cardFace(-width / 2, -height / 2, width, height, 16, role, {
+      emojiSize: 64, nameSize: 24, taglineSize: 11, border: accent, borderWidth: 2,
+    });
+    c.restore();
+    effects.sweep(rect, animation.progress(anim.at + 220, 500));
+    effects.burst(rect, animation.progress(anim.at + 100, 820), accent, (role.id || "").length + 1);
+  }
+  draw.text("今天，成为" + role.name, W / 2, top + available * 0.77, {
+    size: 17, weight: "600", serif: true, color: theme.text, align: "center",
+  });
+  draw.text("点击继续", W / 2, top + available * 0.85, {
+    size: 11, color: theme.muted, align: "center",
+    alpha: fade * animation.tween(0, 1, anim.at + pack.REVEAL_FOCUS_MS, 180),
+  });
+  c.restore();
+  return {
+    zones: [{ id: "reveal", rect: { x: 0, y: top, w: W, h: available } }],
+    contentH: available,
+  };
+}
+
 /* ---------------- 入口 ---------------- */
 
 /** 按阶段画，返回 { zones, contentH, done } */
 function render(vp, state) {
   var anim = state.anim || {};
   var kind = anim.kind || "pack";
+  if (kind === "reveal" && state.draw) return renderReveal(vp, state, anim);
   if (!state.offer || !state.offer.length) {
     return { zones: [], contentH: layout.contentH(vp) };
   }
+  if (kind === "opening") return renderOpening(vp, state, anim);
   if (kind === "tear") return renderTear(vp, state, anim);
   if (kind === "ring") return renderRing(vp, state, anim);
   if (kind === "top") return renderTop(vp, state, anim);
@@ -712,10 +706,12 @@ function render(vp, state) {
 /** 过场还在动吗（需要连续出帧） */
 function busy(state) {
   var anim = state.anim || {};
+  if (anim.kind === "opening") return since(anim) < pack.OPEN_MS;
   if (anim.kind === "tear") {
     // 撕开等玩家划；但撕通之后那条纸还在飘，这一段要连着出帧
     return Boolean(anim.doneAt) && now() - anim.doneAt < pack.TEAR_FINISH_MS;
   }
+  if (anim.kind === "reveal") return since(anim) < pack.REVEAL_MS;
   if (anim.kind === "ring") return true; // 牌一直上下漂浮，得连着出帧
   if (anim.kind === "top") return since(anim) < pack.TOP_MS;
   if (anim.kind === "pack") return true; // 呼吸动画

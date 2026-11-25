@@ -7,6 +7,8 @@
  * 这里只放几何、时序、命中这类纯计算，用户的选择存在 store 里。
  */
 
+var animation = require("./animation.js");
+
 var SERIES = [
   {
     id: "deep",
@@ -46,10 +48,13 @@ function seriesOf(id) {
 
 /* ---------------- 时序 ---------------- */
 
+var OPEN_MS = 480; // 选中的卡包放大移动到撕包位置
 var TEAR_SWIPE = 150; // 把包口整条划开要横向拖多远（设计稿单位，约等于包宽）
 var TEAR_FINISH_MS = 480; // 撕通之后，上半条飘走的时长
 var TOP_MS = 620; // 三张飞到候选位的时长
 var FLIP_MS = 420; // 候选翻开
+var REVEAL_MS = 1000; // 落定后的聚焦揭晓
+var REVEAL_FOCUS_MS = 380; // 聚焦完成后可点击继续
 
 /* ---------------- 环 ---------------- */
 
@@ -82,7 +87,7 @@ var RING = {
  * 卡片一律正立（rot 恒为 0），矩形不会被转成歪斜的菱形。
  */
 function ring(n, spin, top, tms) {
-  var t = tms == null ? Date.now() : tms;
+  var t = tms == null ? animation.now() : tms;
   var stepA = (Math.PI * 2) / n; // 每张牌占的角度
   var kNear = RING.camK / (RING.camK - 1); // 正前方那张的透视放大率
   var out = [];
@@ -139,30 +144,24 @@ function hitCard(card, px, py) {
 
 /* ---------------- 缓动 ---------------- */
 
-function clamp01(t) {
-  return t < 0 ? 0 : t > 1 ? 1 : t;
-}
+// 保留几何模块原有调用名，统一实现来自动画工具。
+var clamp01 = animation.clamp01;
+var easeOut = animation.easing.outCubic;
+var easeBack = animation.easing.outBack;
 
-/** 先快后慢 */
-function easeOut(t) {
-  var k = 1 - clamp01(t);
-  return 1 - k * k * k;
-}
-
-/** 稍微冲过去一点再回来，落位更有「啪」的感觉 */
-function easeBack(t) {
-  var k = clamp01(t) - 1;
-  var s = 1.7;
-  return 1 + k * k * ((s + 1) * k + s);
-}
+function tearRect(top) { return {x:112.5,y:top+96,w:150,h:210}; }
 
 module.exports = {
+  OPEN_MS: OPEN_MS,
+  tearRect: tearRect,
   SERIES: SERIES,
   seriesOf: seriesOf,
   TEAR_SWIPE: TEAR_SWIPE,
   TEAR_FINISH_MS: TEAR_FINISH_MS,
   TOP_MS: TOP_MS,
   FLIP_MS: FLIP_MS,
+  REVEAL_MS: REVEAL_MS,
+  REVEAL_FOCUS_MS: REVEAL_FOCUS_MS,
   RING: RING,
   ring: ring,
   hitCard: hitCard,

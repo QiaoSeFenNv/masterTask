@@ -1,0 +1,4 @@
+libpag-miniprogram 4.3.51
+Tencent/libpag: https://github.com/Tencent/libpag
+Licensed under Apache-2.0; see LICENSE.txt.
+The SDK includes TGFX components under BSD-3-Clause; their notices remain in libpag.js.

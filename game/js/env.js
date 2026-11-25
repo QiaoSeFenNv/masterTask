@@ -150,6 +150,32 @@ function viewport() {
   };
 }
 
+/** 小游戏用全局 RAF；浏览器 canvas 预览与 Node 测试有独立回退。 */
+function requestFrame(callback, canvas) {
+  if (typeof requestAnimationFrame === "function") {
+    return {
+      id: requestAnimationFrame(callback),
+      cancel: typeof cancelAnimationFrame === "function"
+        ? function (id) { cancelAnimationFrame(id); } : null,
+    };
+  }
+  if (canvas && typeof canvas.requestAnimationFrame === "function") {
+    return {
+      id: canvas.requestAnimationFrame(callback),
+      cancel: typeof canvas.cancelAnimationFrame === "function"
+        ? function (id) { canvas.cancelAnimationFrame(id); } : null,
+    };
+  }
+  var id = setTimeout(function () { callback(Date.now()); }, 16);
+  // Node 冒烟测试不应该被等待中的画帧定时器阻止退出。
+  if (id && typeof id.unref === "function") id.unref();
+  return { id: id, cancel: function (timerId) { clearTimeout(timerId); } };
+}
+
+function cancelFrame(ticket) {
+  if (ticket && ticket.cancel) ticket.cancel(ticket.id);
+}
+
 module.exports = {
   DESIGN_WIDTH: DESIGN_WIDTH,
   isNode: isNode,
@@ -159,4 +185,6 @@ module.exports = {
   size: size,
   scale: scale,
   viewport: viewport,
+  requestFrame: requestFrame,
+  cancelFrame: cancelFrame,
 };

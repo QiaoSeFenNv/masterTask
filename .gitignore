@@ -6,6 +6,11 @@ server/dist/
 
 # local data (NEVER commit: contains user rows)
 data/
+
+# Packaged PAG bytes ship with the game; role data is generated separately.
+!game/data/
+game/data/*
+!game/data/reveal-pag.js
 *.db
 *.db-journal
 *.db-wal
@@ -37,3 +42,11 @@ tools/.imgbot/out/
 
 # preview / contact-sheet screenshots
 tools/.imgbot/*.png
+
+# PAG renderer screenshots and verification reports
+tools/.pag-preview/
+tools/pag-native-preview/
+
+# Generated Web preview and browser verification artifacts
+/web/dist/
+/tools/.web-preview/

@@ -1,0 +1,14 @@
+{
+  "package": "libpag-miniprogram",
+  "version": "4.3.51",
+  "files": {
+    "libpag.js": {
+      "bytes": 340879,
+      "sha256": "39f639c2c9238634bcfeec3c739828a77078adbf0f166e2768d05a01bf25075c"
+    },
+    "libpag.wasm.br": {
+      "bytes": 581595,
+      "sha256": "aebcbd221b526e6495ccaec5a50e882e2561e9f40fa4c42c7bbeb42dc1a495c3"
+    }
+  }
+}

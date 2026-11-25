@@ -5,9 +5,20 @@
   "type": "module",
   "scripts": {
     "dev": "node --experimental-strip-types --watch server/src/index.ts",
-    "start": "node --experimental-strip-types server/src/index.ts"
+    "start": "node --experimental-strip-types server/src/index.ts",
+    "pag:sync": "node tools/sync-pag.cjs",
+    "pag:build": "node tools/build-pag-template.cjs",
+    "test:animation": "node --test tools/animation.test.cjs tools/pag-reveal.test.cjs",
+    "test:pag": "node tools/pag-render-check.cjs",
+    "pag:pack": "node tools/pack-pag-template.cjs",
+    "pag:native": "node tools/pag-native-probe.cjs",
+    "web:build": "node tools/build-web.cjs",
+    "web:dev": "node tools/build-web.cjs --serve",
+    "web:preview": "node tools/serve-web.cjs",
+    "test:web": "node tools/web-check.cjs"
   },
   "devDependencies": {
+    "libpag-miniprogram": "4.3.51",
     "playwright-core": "^1.65.1"
   }
 }

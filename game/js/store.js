@@ -6,6 +6,7 @@
 var api = require("./api.js");
 var layout = require("./layout.js");
 var pack = require("./pack.js");
+var animation = require("./animation.js");
 
 var state = {
   tab: "today", // today | calendar | collection
@@ -20,7 +21,7 @@ var state = {
   slot: "", // 从这 3 张里选中的那张，落定用
   shifting: false, // 落定进行中
   canRedraw: false, // 服务端是否允许重新抽卡（测试环境才有）
-  anim: { kind: "", at: 0, series: "" }, // 过场：pack(选卡包) | tear(撕开) | ring(环形) | top(飞上方) | pick(选一张)
+  anim: { kind: "", at: 0, series: "" }, // 过场：pack(选卡包) | tear(撕开) | ring(环形) | top(飞上方) | pick(选一张) | reveal(揭晓)
   stats: { streak: 0, totalDays: 0, totalTasks: 0, doneTasks: 0, completionRate: 0, collected: [] },
   shuffling: false,
   noteDraft: "",
@@ -55,7 +56,7 @@ function msgOf(err) {
 
 function toast(text) {
   state.toast = text;
-  state.toastAt = Date.now();
+  state.toastAt = animation.now();
   emit();
 }
 
@@ -81,7 +82,7 @@ function loadToday() {
       state.pickedAt = {};
       state.ringSpin = 0;
       state.slot = "";
-      state.anim = { kind: state.draw ? "" : "pack", at: Date.now() };
+      state.anim = { kind: state.draw ? "" : "pack", at: animation.now() };
       state.noteDraft = state.draw ? state.draw.noteDraft : "";
       state.status = "ready";
       emit();
@@ -115,11 +116,19 @@ function findOffer(roleId) {
   return null;
 }
 
-/** 选一个系列的卡包，进入「撕开」过场（撕开要玩家自己划，不自动跑） */
+/** 选一个系列的卡包，先放大移动，再等待玩家撕开 */
 function chooseSeries(seriesId) {
   if (state.anim.kind !== "pack") return;
   var s = pack.seriesOf(seriesId);
-  state.anim = { kind: "tear", at: Date.now(), series: s.id, p: 0, doneAt: 0, recoilAt: 0 };
+  state.anim = { kind: "opening", at: animation.now(), series: s.id };
+  emit();
+}
+
+/** Move the selected packet into place before accepting tear gestures. */
+function enterTear() {
+  var a = state.anim;
+  if (!a || a.kind !== "opening") return;
+  state.anim = {kind:"tear",at:a.at+pack.OPEN_MS,series:a.series,p:0,doneAt:0,recoilAt:0};
   emit();
 }
 
@@ -134,7 +143,7 @@ function swipeTear(dx) {
   a.p = pack.clamp01((a.p || 0) + dx / pack.TEAR_SWIPE);
   if (a.p >= 1) {
     a.p = 1;
-    a.doneAt = Date.now(); // 撕通了，那一条开始飘走
+    a.doneAt = animation.now(); // 撕通了，那一条开始飘走
   }
   emit();
 }
@@ -149,7 +158,7 @@ function releaseTear() {
   var p = a.p || 0;
   a.recoilFrom = p;
   a.recoilTo = Math.max(0, p - 0.25);
-  a.recoilAt = Date.now() || 1;
+  a.recoilAt = animation.now() || 1;
   emit();
 }
 
@@ -157,8 +166,8 @@ function releaseTear() {
 function tickTear(tms) {
   var a = state.anim;
   if (!a || a.kind !== "tear" || !a.recoilAt) return false;
-  var t = pack.clamp01((tms - a.recoilAt) / 260);
-  a.p = a.recoilFrom + (a.recoilTo - a.recoilFrom) * pack.easeOut(t);
+  var t = animation.progress(a.recoilAt, 260, tms);
+  a.p = animation.tween(a.recoilFrom, a.recoilTo, a.recoilAt, 260, "outCubic", tms);
   if (t >= 1) a.recoilAt = 0;
   return true;
 }
@@ -167,7 +176,7 @@ function tickTear(tms) {
 function enterRing() {
   if (state.anim.kind !== "tear") return;
   if (!state.anim.doneAt) return; // 还没撕通，不许进去
-  state.anim = { kind: "ring", at: Date.now() };
+  state.anim = { kind: "ring", at: animation.now(), series: state.anim.series };
   state.ringSpin = 0;
   emit();
 }
@@ -196,17 +205,18 @@ function flipCard(roleId) {
     return;
   }
   state.picked.push(roleId);
-  state.pickedAt[roleId] = Date.now();
+  state.pickedAt[roleId] = animation.now();
   emit();
   if (state.picked.length === 3) {
     // 点满三张：等最后一张翻完，再飞到上方成候选排
-    state.anim = { kind: "top", at: Date.now() + (pack.FLIP_MS || 420) };
+    state.anim = { kind: "top", at: animation.now() + pack.FLIP_MS, series: state.anim.series };
     emit();
   }
 }
 
 /** 三张就位后，从里面选一张 */
 function selectSlot(roleId) {
+  if (state.shifting) return;
   if (state.anim.kind !== "pick" && state.anim.kind !== "top") return;
   if (state.picked.indexOf(roleId) < 0) return;
   state.slot = roleId;
@@ -216,7 +226,7 @@ function selectSlot(roleId) {
 /** 三张飞到位了：进入可选阶段 */
 function enterPick() {
   if (state.anim.kind !== "top") return;
-  state.anim = { kind: "pick", at: Date.now(), series: state.anim.series };
+  state.anim = { kind: "pick", at: animation.now(), series: state.anim.series };
   emit();
 }
 
@@ -229,6 +239,8 @@ function confirmPick() {
     return Promise.resolve();
   }
   var target = state.slot;
+  var slotIndex = state.picked.indexOf(target);
+  var series = state.anim.series;
   state.shifting = true;
   emit();
   return api
@@ -241,7 +253,8 @@ function confirmPick() {
       state.pickedAt = {};
       state.ringSpin = 0;
       state.slot = "";
-      state.anim = { kind: "", at: 0, series: "" };
+      state.anim = { kind: "reveal", at: animation.now(), series: series, slotIndex: slotIndex };
+      state.scroll = 0;
       state.noteDraft = state.draw.noteDraft;
       state.shifting = false;
       emit();
@@ -283,7 +296,7 @@ function redrawToday() {
       state.pickedAt = {};
       state.ringSpin = 0;
       state.slot = "";
-      state.anim = { kind: "pack", at: Date.now(), series: "" };
+      state.anim = { kind: "pack", at: animation.now(), series: "" };
       emit();
       return loadToday().then(function () {
         toast("换了一包新的");
@@ -298,8 +311,16 @@ function redrawToday() {
     });
 }
 
-/** 现在流程在哪一步：pack | tear | ring | top | pick；已落定则为空 */
+/** 揭晓只影响展示，角色在接口成功时已经落定。 */
+function finishReveal() {
+  if (state.anim.kind !== "reveal") return;
+  state.anim = { kind: "", at: 0, series: "" };
+  emit();
+}
+
+/** 现在流程在哪一步；已落定且揭晓结束则为空 */
 function stage() {
+  if (state.draw && state.anim.kind === "reveal") return "reveal";
   if (state.draw) return "";
   return state.anim.kind || "pack";
 }
@@ -538,6 +559,7 @@ module.exports = {
   drawToday: drawToday,
   redrawToday: redrawToday,
   chooseSeries: chooseSeries,
+  enterTear: enterTear,
   swipeTear: swipeTear,
   releaseTear: releaseTear,
   tickTear: tickTear,
@@ -547,6 +569,7 @@ module.exports = {
   selectSlot: selectSlot,
   stage: stage,
   enterPick: enterPick,
+  finishReveal: finishReveal,
   pickedRoles: pickedRoles,
   confirmPick: confirmPick,
   toggleTask: toggleTask,

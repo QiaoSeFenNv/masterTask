@@ -5,6 +5,7 @@
 
 var draw = require("./draw.js");
 var layout = require("./layout.js");
+var animation = require("./animation.js");
 var theme = require("./theme.js");
 var env = require("./env.js");
 
@@ -518,9 +519,13 @@ function renderCollection(vp, state) {
     fill({ x: bar.x, y: bar.y, w: bar.w * ratio, h: bar.h, r: bar.r }, theme.gold, bar.r);
   }
 
+  // Keep the summary fixed while the grid follows the scroll position.
+  var listTop = top + 42;
+  var listBottom = top + layout.contentH(vp);
+  draw.clipRect(0, listTop, W, listBottom - listTop);
   col.cards.forEach(function (card, i) {
     var b = layout.collectionCardRect(i);
-    var r = { x: b.x, y: top + b.y, w: b.w, h: b.h, r: b.r };
+    var r = { x: b.x, y: top + b.y - (state.scroll || 0), w: b.w, h: b.h, r: b.r };
 
     if (card.owned) {
       gradientFill(r, card.gradient, 150, r.r);
@@ -556,8 +561,14 @@ function renderCollection(vp, state) {
         align: "center",
       });
     }
-    zones.push({ id: "card", card: card, rect: r, radius: r.r });
+    // Invisible parts of cards must not capture clicks on the summary or navigation.
+    var hitTop = Math.max(listTop, r.y);
+    var hitBottom = Math.min(listBottom, r.y + r.h);
+    if (hitBottom > hitTop) {
+      zones.push({ id: "card", card: card, rect: { x: r.x, y: hitTop, w: r.w, h: hitBottom - hitTop }, radius: r.r });
+    }
   });
+  draw.restore();
 
   return { zones: zones, contentH: layout.collectionContentH(col.cards.length) + 40 };
 }
@@ -629,9 +640,9 @@ function renderSheet(vp, state) {
 
 function renderToast(vp, state) {
   if (!state.toast) return;
-  var age = Date.now() - (state.toastAt || 0);
+  var age = animation.now() - (state.toastAt || 0);
   if (age > 2000) return;
-  var alpha = age > 1700 ? 1 - (age - 1700) / 300 : 1;
+  var alpha = animation.tween(1, 0, (state.toastAt || 0) + 1700, 300);
   var w = Math.min(layout.innerW(), draw.measure(state.toast, 12.5) + 40);
   var r = {
     x: (W - w) / 2,

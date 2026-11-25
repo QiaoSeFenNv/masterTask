@@ -179,10 +179,20 @@ function offerContentH() {
 /** 点满三张以后，从这三张里选一张落定 */
 var PICK_GAP = 11;
 
+/** Use the title space when a short viewport needs more room for the candidates. */
+function pickTop(vp) {
+  var deficit = Math.max(0, pickContentH() - contentH(vp));
+  return Math.max(vp.safeTop + 24, contentTop(vp) - deficit);
+}
+
 function pickCardRect(i) {
   var w = (innerW() - PICK_GAP * 2) / 3;
   var h = 168;
-  return { x: PAD + i * (w + PICK_GAP), y: 118, w: w, h: h, r: 14 };
+  return { x: PAD + i * (w + PICK_GAP), y: 48, w: w, h: h, r: 14 };
+}
+
+function pickIntroRect() {
+  return { x: PAD, y: 234, w: innerW(), h: 84, r: 14 };
 }
 
 function pickButtonRect() {
@@ -190,7 +200,7 @@ function pickButtonRect() {
 }
 
 function pickContentH() {
-  return 460;
+  return 450;
 }
 
 function pickIndex(list, id) {
@@ -303,8 +313,10 @@ module.exports = {
   offerButtonRect: offerButtonRect,
   offerContentH: offerContentH,
   PICK_GAP: PICK_GAP,
+  pickTop: pickTop,
   pickCardRect: pickCardRect,
   pickButtonRect: pickButtonRect,
+  pickIntroRect: pickIntroRect,
   pickContentH: pickContentH,
   pickIndex: pickIndex,
   CAL_COLS: CAL_COLS,

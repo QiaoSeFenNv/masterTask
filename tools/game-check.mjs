@@ -49,6 +49,7 @@ function makeCtx() {
       ops.push(["rect"]);
     },
     rotate() {},
+    scale(x, y) { ops.push(["scale", x, y]); },
     arc() {},
     fill() {
       ops.push(["fill"]);
@@ -273,10 +274,19 @@ const run = async () => {
     /* 点中间的「暮色」 */
     app.dispatch(187.5, layout.contentTop(vp) + 150);
     check(
-      "点系列卡进入撕开",
-      store.state.anim.kind === "tear" && store.state.anim.series === "dusk",
+      "点系列卡先播放选包过渡",
+      store.state.anim.kind === "opening" && store.state.anim.series === "dusk",
       JSON.stringify(store.state.anim)
     );
+
+    const openingAt = store.state.anim.at;
+    const openingPack = require(resolve(ROOT, "game/js/pack.js"));
+    store.swipeTear(openingPack.TEAR_SWIPE);
+    check("选包过渡阶段不接受撕包", store.stage() === "opening" && !store.state.anim.p, store.stage());
+    app.render(openingAt + openingPack.OPEN_MS - 1);
+    check("选包过渡按时长持续", store.stage() === "opening", store.stage());
+    app.render(openingAt + openingPack.OPEN_MS);
+    check("过渡完成后才进入撕包", store.stage() === "tear" && store.state.anim.p === 0, store.stage());
 
     ops.length = 0;
     app.render();
@@ -504,6 +514,15 @@ const run = async () => {
     store.flipCard(extra.id);
     check("第四张不会再被收进来", store.state.picked.length === 3, String(store.state.picked.length));
 
+    // 第三张翻完之前仍留在环上；起飞后三张保持正面。
+    ops.length = 0;
+    app.render(store.state.anim.at - 100);
+    check("最后一张翻完前保留整圈", ops.some((o) => o[0] === "fillText" && o[1] === "左右拖动转一圈，点三张"));
+    ops.length = 0;
+    app.render(store.state.anim.at + 200);
+    const flyingNames = store.pickedRoles().map((r) => r.name);
+    check("飞行时三张保持正面", flyingNames.every((name) => ops.some((o) => o[0] === "fillText" && o[1] === name)));
+
     /* 快进到可选 */
     store.state.anim.at = Date.now() - 2000;
     app.render();
@@ -530,6 +549,18 @@ const run = async () => {
       JSON.stringify(store.state.draw && store.state.draw.role.id)
     );
     check("落定后候选清空", store.state.offer.length === 0, String(store.state.offer.length));
+    check("落定后进入揭晓", store.stage() === "reveal", store.stage());
+    const animation = require(resolve(ROOT, "game/js/animation.js"));
+    const revealPack = require(resolve(ROOT, "game/js/pack.js"));
+    const revealed = store.state.draw;
+    const revealAt = store.state.anim.at;
+    ops.length = 0;
+    app.render(revealAt + 400);
+    check("揭晓画出角色聚焦文案", ops.some((o) => o[0] === "fillText" && o[1] === "今天，成为" + revealed.role.name));
+    animation.withTime(revealAt + 100, () => app.dispatch(180, layout.contentTop(vp) + 220));
+    check("聚焦完成前不误跳过", store.stage() === "reveal");
+    animation.withTime(revealAt + revealPack.REVEAL_FOCUS_MS + 1, () => app.dispatch(180, layout.contentTop(vp) + 220));
+    check("揭晓可点击继续", store.stage() === "" && store.state.draw === revealed);
     check("落定后过场结束", store.stage() === "", store.stage());
   }
 
@@ -590,7 +621,10 @@ const run = async () => {
   if (ownedCard) {
     const idx = store.state.collection.cards.indexOf(ownedCard);
     const cr = layout.collectionCardRect(idx);
-    cr.y += layout.contentTop(vp);
+    // Scroll an owned role into the visible grid before clicking, as a player would.
+    store.state.scroll = Math.min(store.state.scrollMax, Math.max(0, cr.y - 56));
+    app.render();
+    cr.y += layout.contentTop(vp) - store.state.scroll;
     app.dispatch(cr.x + 10, cr.y + 10);
     app.render();
     check("点卡片弹出详情", Boolean(store.state.selected && store.state.selected.name), JSON.stringify(store.state.selected && store.state.selected.name));
@@ -627,6 +661,7 @@ const run = async () => {
 
     // 再抽一次，确认可以反复抽
     store.chooseSeries("deep");
+    store.enterTear();
     store.swipeTear(require(resolve(ROOT, "game/js/pack.js")).TEAR_SWIPE * 2);
     store.state.anim.doneAt = Date.now() - 2000;
     app.render();
@@ -639,6 +674,8 @@ const run = async () => {
     await sleep(400);
     check("重抽后还能再落定一次", Boolean(store.state.draw), "draw=" + Boolean(store.state.draw));
     check("重抽后落定的就是刚选的那张", store.state.draw && store.state.draw.role.id === ids[0], JSON.stringify(store.state.draw && store.state.draw.role.id));
+    app.render(store.state.anim.at + require(resolve(ROOT, "game/js/pack.js")).REVEAL_MS + 20);
+    check("丢帧后揭晓自动结束", store.stage() === "" && Boolean(store.state.draw));
   } else {
     check("生产环境不给重抽按钮", !store.state.canRedraw, "");
   }

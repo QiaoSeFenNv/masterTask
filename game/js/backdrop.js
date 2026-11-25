@@ -18,6 +18,7 @@ var draw = require("./draw.js");
 var assets = require("./assets.js");
 var theme = require("./theme.js");
 var dayphase = require("./dayphase.js");
+var animation = require("./animation.js");
 
 /** 时段 -> 用哪张背景图。三张各用一次，色调上也说得通 */
 var MAP = {};
@@ -66,12 +67,12 @@ function baseAlpha() {
 /** 换系列时做一次短淡入，免得整页色温突兀地一跳 */
 function fadeFactor() {
   if (!fadeAt) return 1;
-  var t = (Date.now() - fadeAt) / FADE_MS;
+  var t = animation.progress(fadeAt, FADE_MS);
   if (t >= 1) {
     fadeAt = 0;
     return 1;
   }
-  return t;
+  return animation.tween(0, 1, fadeAt, FADE_MS, "inOutCubic");
 }
 
 /**
@@ -83,7 +84,7 @@ function paint(vp) {
   if (!img) return false;
 
   if (series !== lastKey) {
-    if (lastKey) fadeAt = Date.now();
+    if (lastKey) fadeAt = animation.now();
     lastKey = series;
   }
 
@@ -107,5 +108,6 @@ function unpin() {
 module.exports = {
   paint: paint,
   pin: pin,
-  unpin: unpin
+  unpin: unpin,
+  isFading: function () { return Boolean(fadeAt) && animation.progress(fadeAt, FADE_MS) < 1; },
 };

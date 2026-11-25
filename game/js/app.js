@@ -16,13 +16,20 @@ var bg = require("./bg.js");
 var backdrop = require("./backdrop.js");
 var theme = require("./theme.js");
 var assets = require("./assets.js");
+var animation = require("./animation.js");
+var pack = require("./pack.js");
+var pagReveal = require("./pag-reveal.js");
 
 var canvas = null;
-var pending = false;
 var zones = [];
 var drag = null;
 var openedKeyboard = false;
 var lastPhase = "";
+var frameLoop = animation.createLoop({
+  request: function (callback) { return env.requestFrame(callback, canvas); },
+  cancel: env.cancelFrame,
+  render: render,
+});
 
 /**
  * 按「背景模式」把主题切到该有的配色。
@@ -39,6 +46,8 @@ function syncPhase() {
 function setCanvas(c) {
   canvas = c;
   draw.init(c);
+  pagReveal.onFrame(requestFrame);
+  syncPag();
   resize();
 }
 
@@ -52,17 +61,27 @@ function resize() {
 }
 
 function requestFrame() {
-  if (pending) return;
-  pending = true;
-  var run = function () {
-    pending = false;
-    render();
-  };
-  if (typeof requestAnimationFrame === "function") {
-    requestAnimationFrame(run);
-  } else {
-    setTimeout(run, 16);
+  if (canvas) frameLoop.request();
+}
+
+/** Warm PAG while the player opens/selects cards; discard role resources on exit. */
+function syncPag() {
+  if (!canvas) return;
+  var st = store.state;
+  var kind = (st.anim || {}).kind;
+  if (st.tab !== "today" || st.status !== "ready") { pagReveal.release(); return; }
+  if (kind === "reveal" && st.draw) { pagReveal.prepare(st.draw.role); return; }
+  if (!st.draw) {
+    pagReveal.preload();
+    if (kind === "pick" || kind === "top") {
+      var roles = store.pickedRoles();
+      for (var i = 0; i < roles.length; i++) {
+        if (roles[i].id === st.slot) { pagReveal.prepare(roles[i]); break; }
+      }
+      return;
+    }
   }
+  pagReveal.release();
 }
 
 function countOwned(state) {
@@ -74,9 +93,27 @@ function countOwned(state) {
   return n;
 }
 
-function render() {
+function render(time) {
+  return animation.withTime(time, paint);
+}
+
+function paint() {
   var v = env.viewport();
   var st = store.state;
+  var time = animation.now();
+  var anim = st.anim || {};
+  // 所有阶段在画之前推进；一帧内的状态和命中区始终对应同一画面。
+  if (anim.kind === "opening" && time - anim.at >= pack.OPEN_MS) {
+    store.enterTear();
+  } else if (anim.kind === "tear" && anim.doneAt && time - anim.doneAt >= pack.TEAR_FINISH_MS) {
+    store.enterRing();
+  } else if (anim.kind === "top" && time - anim.at >= pack.TOP_MS) {
+    store.enterPick();
+  } else if (anim.kind === "reveal" && time - anim.at >= pack.REVEAL_MS) {
+    store.finishReveal();
+  }
+  var recoiling = store.tickTear(time);
+  syncPag();
 
   draw.clear();
   syncPhase();
@@ -85,13 +122,13 @@ function render() {
   var titles = { today: "今日角色", calendar: "历史日历", collection: "角色图鉴" };
 
   // 开卡包过场是全屏的，有它就不画标题和换背景按钮
-  var packStage = st.tab === "today" && st.status === "ready" && !st.draw ? store.stage() : "";
+  var packStage = st.tab === "today" && st.status === "ready" ? store.stage() : "";
   // 生成的外景整页淡铺：过场里跟着玩家挑的系列，平时按时段
   if (packStage && st.anim && st.anim.series) backdrop.pin(st.anim.series);
   else backdrop.unpin();
   backdrop.paint(v);
 
-  if (!packStage) {
+  if (!packStage || packStage === "reveal") {
     var subs = {
       today: st.draw ? layout.monthDay(st.draw.date) : "",
       calendar: st.calendar.loading ? "" : "连续 " + st.calendar.streak + " 天",
@@ -103,10 +140,13 @@ function render() {
     view.renderBgButton(v, layout.bgButtonRect(v), bg);
   }
 
+  // 揭晓淡出时露出的任务内容仍限制在内容区，不能穿过底部导航。
+  if (packStage === "reveal") draw.clipRect(0, layout.contentTop(v), v.width, layout.contentH(v));
   var result;
   if (st.tab === "today") result = view.renderToday(v, st);
   else if (st.tab === "calendar") result = view.renderCalendar(v, st);
   else result = view.renderCollection(v, st);
+  if (packStage === "reveal") draw.restore();
 
   var list = (result && result.zones) || [];
   var contentH = (result && result.contentH) || layout.contentH(v);
@@ -126,37 +166,17 @@ function render() {
     zones = zones.concat(view.renderSheet(v, st));
   }
 
-  if (starfield.isFading()) scheduleFadeFrame();
-
-  // 开卡包过场：画在最上层，占满内容区
+  // 开卡包过场画在内容上方；揭晓的最后一段透出下面的任务页。
   if (packStage) {
-    // 先推进阶段，再画，免得这一帧画的是上一阶段的内容。
-    // 撕开这一阶段由玩家自己划，只有「撕通了 + 那条纸飘完」才进环形。
-    var anim = st.anim || {};
-    if (anim.kind === "tear" && anim.doneAt && Date.now() - anim.doneAt >= packview.TEAR_FINISH_MS) {
-      store.enterRing();
-    } else if (anim.kind === "top" && Date.now() - anim.at >= packview.TOP_MS) {
-      store.enterPick();
-    }
-    // 松手后的回弹要一帧一帧推
-    if (anim.kind === "tear" && store.tickTear(Date.now())) requestFrame();
-
     var packRes = packview.render(v, st);
     zones = (packRes.zones || []).concat(tabZones);
-    if (packview.busy(st)) schedulePackFrame();
+    if (packStage === "reveal") st.scrollMax = 0;
   }
-}
-
-/** 过场动画期间连续出帧 */
-var packTimer = null;
-var PACK_FRAME_MS = 33; // 约 30fps，小游戏里足够了
-
-function schedulePackFrame() {
-  if (packTimer) return;
-  packTimer = setTimeout(function () {
-    packTimer = null;
-    requestFrame();
-  }, PACK_FRAME_MS);
+  return Boolean(
+    starfield.isFading() || backdrop.isFading() ||
+    (packStage && (recoiling || packview.busy(st))) ||
+    (st.toast && time - st.toastAt < 2000)
+  );
 }
 
 /* ---------------- 命中 ---------------- */
@@ -272,6 +292,12 @@ function onTouchMove(e) {
 
 function onTouchEnd(e) {
   if (!drag) return;
+  if (e && e.canceled) {
+    var wasTearing = tearDragging(store.state);
+    drag = null;
+    if (wasTearing) { store.releaseTear(); requestFrame(); }
+    return;
+  }
   var t = firstTouch(e);
   var wasDrag = drag.moved;
   var point = t ? toDesign(t) : { x: drag.startX, y: drag.lastY };
@@ -311,6 +337,10 @@ function dispatch(x, y) {
 
   if (z.id === "tab") {
     store.setTab(z.tab);
+    return;
+  }
+  if (z.id === "reveal") {
+    if (animation.now() - st.anim.at >= pack.REVEAL_FOCUS_MS) store.finishReveal();
     return;
   }
   if (!st.draw && packOwnsScreen(st)) {
@@ -472,17 +502,6 @@ function fallbackKeyboard(w) {
 
 /* ---------------- 启动 ---------------- */
 
-/** 背景交叉淡入期间要连着出帧，否则会停在一张半透明的画面上 */
-var fadeTimer = null;
-
-function scheduleFadeFrame() {
-  if (fadeTimer) return;
-  fadeTimer = setTimeout(function () {
-    fadeTimer = null;
-    requestFrame();
-  }, 40);
-}
-
 function boot() {
   var w = env.getWx();
   env.refreshMetrics();
@@ -494,6 +513,9 @@ function boot() {
 
   var runtime = w && typeof w.createCanvas === "function" ? w.createCanvas() : null;
   if (runtime) setCanvas(runtime);
+
+  if (w && typeof w.onHide === "function") w.onHide(function () { frameLoop.pause(); pagReveal.pause(); });
+  if (w && typeof w.onShow === "function") w.onShow(function () { pagReveal.resume(); frameLoop.resume(); });
 
   if (w && typeof w.onTouchStart === "function") {
     w.onTouchStart(onTouchStart);
@@ -509,6 +531,7 @@ function start() {
     requestFrame();
   }
   store.subscribe(function () {
+    syncPag();
     requestFrame();
   });
   store.loadToday();

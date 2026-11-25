@@ -16,6 +16,7 @@ var draw = require("./draw.js");
 var theme = require("./theme.js");
 var dayphase = require("./dayphase.js");
 var env = require("./env.js");
+var animation = require("./animation.js");
 
 var DESIGN_W = 375;
 var FADE_MS = 1200;
@@ -213,7 +214,7 @@ function paint(vp) {
   } else if (want !== current) {
     // 换时段：先把旧画面截下来，盖在新背景上淡出
     var old = snapshot(canvas);
-    if (old) fading = { img: old, start: Date.now() };
+    if (old) fading = { img: old, start: animation.now() };
     current = want;
   }
 
@@ -221,12 +222,12 @@ function paint(vp) {
   painter(ctx, w, h);
 
   if (fading) {
-    var t = (Date.now() - fading.start) / FADE_MS;
+    var t = animation.progress(fading.start, FADE_MS);
     if (t >= 1) {
       fading = null;
     } else {
       ctx.save();
-      ctx.globalAlpha = 1 - t;
+      ctx.globalAlpha = animation.tween(1, 0, fading.start, FADE_MS, "inOutCubic");
       try {
         ctx.drawImage(fading.img, 0, 0, w, h);
       } catch (e) {
