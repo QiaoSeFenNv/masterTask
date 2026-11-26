@@ -4,6 +4,7 @@ const path = require('node:path');
 const assert = require('node:assert/strict');
 const {chromium} = require('playwright-core');
 const {browserExecutable} = require('./build-pag-template.cjs');
+const {shadowSamples} = require('./shadow-check.cjs');
 const {build} = require('./build-web.cjs');
 const {createServer} = require('./serve-web.cjs');
 const ARTIFACTS = path.resolve(__dirname, '.web-preview');
@@ -11,7 +12,7 @@ const results = [];
 async function state(page) { return page.evaluate(() => {
   const s = rolesPreview.game.store.state;
   return {stage:s.anim.kind,draw:s.draw,slot:s.slot,picked:s.picked.slice(),p:s.anim.p,
-    tilt:s.anim.tilt,scroll:s.scroll,scrollMax:s.scrollMax,tab:s.tab,calendar:s.calendar,collection:s.collection,selected:s.selected};
+    tilt:s.anim.tilt,finishMode:s.anim.finishMode,finishMs:s.anim.finishMs,scroll:s.scroll,scrollMax:s.scrollMax,tab:s.tab,calendar:s.calendar,collection:s.collection,selected:s.selected};
 }); }
 async function point(page,x,y) { return page.evaluate(({x,y}) => {
   const r = document.querySelector('#game').getBoundingClientRect();
@@ -39,7 +40,8 @@ async function drag(page,from,to,touch) {
   await touch.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
 }
 async function flush(page) { await page.evaluate(async()=>{
-  const p=rolesPreview.requireGame('js/pag-reveal.js');await p.settled();rolesPreview.game.render();await p.settled();rolesPreview.game.render();
+  const p=rolesPreview.requireGame('js/pag-reveal.js'),t=rolesPreview.requireGame('js/pag-tear.js');
+  await Promise.all([p.settled(),t.settled()]);rolesPreview.game.render();await Promise.all([p.settled(),t.settled()]);rolesPreview.game.render();
 }); }
 async function shot(page,name) { const file=path.join(ARTIFACTS,name+'.png');await page.screenshot({path:file,fullPage:true});return file; }
 async function open(browser,base,mobile=false,unsupported=false,small=false,visitor=null) {
@@ -63,6 +65,8 @@ async function open(browser,base,mobile=false,unsupported=false,small=false,visi
   await page.clock.pauseAt(new Date('2026-11-24T20:00:01+08:00'));
   await page.goto(base,{waitUntil:'networkidle'});
   assert.equal(await page.evaluate(()=>rolesPreview.game.store.state.status),'ready');
+  assert.ok(await page.evaluate(()=>['deep','dusk','dawn'].every(id=>Boolean(rolesPreview.requireGame('js/assets.js').foil(id)))),
+    'Every series serves and decodes its unprinted foil PNG; a gradient fallback must not hide missing assets');
   await page.clock.runFor(32);
   assert.equal(await page.evaluate(()=>__cuePlays.length),0,"Preloading never autoplays");
   return {page,context,errors,requests,touch:mobile?await context.newCDPSession(page):null};
@@ -88,8 +92,12 @@ async function candidateCaption(page,roleId) {
     return {role:role.id,tagline:role.tagline,card,samples};
   },roleId);
 }
-async function chooseAndTear(session,name) {
+async function chooseAndTear(session,name,direction='right') {
   const {page,touch}=session, g=await geometry(page);
+  const paths={right:{x:98,y:159,dx:1,dy:0,sign:1},left:{x:277,y:159,dx:-1,dy:0,sign:-1},
+    up:{x:187.5,y:280,dx:0,dy:-1,sign:1},down:{x:187.5,y:124,dx:0,dy:1,sign:1},
+    diagonal:{x:132,y:128,dx:.6,dy:.8,sign:1}};
+  const path=paths[direction];assert.ok(path,'Known tear gesture');
   assert.ok((await entryScales(page)).some(([x,y])=>x>=0.96&&x<1&&x===y), "Series entry is animating when the first tap is accepted");
   await tap(page,await point(page,72,g.top+158),touch);
   assert.equal((await state(page)).stage,'opening');
@@ -99,22 +107,39 @@ async function chooseAndTear(session,name) {
   await page.clock.runFor(320);
   assert.equal((await state(page)).stage,'tear');
   assert.equal((await state(page)).p,0);
-  const start=await point(page,112.5,g.top+159), partial=await point(page,172.5,g.top+159);
+  await page.evaluate(()=>rolesPreview.requireGame('js/pag-tear.js').settled());
+  const start=await point(page,path.x,g.top+path.y), partial=await point(page,path.x+75*path.dx,g.top+path.y+75*path.dy);
   await drag(page,start,partial,touch);
   assert.ok((await state(page)).p>0 && (await state(page)).p<1);
-  assert.ok((await state(page)).tilt > 0 && (await state(page)).tilt <= 8);
-  await page.clock.runFor(50);
+  assert.ok(Math.abs((await state(page)).tilt-4*path.sign)<.02 && Math.abs((await state(page)).p-.5)<.002, direction+' half tear progresses equally and visibly tilts four degrees');
+  await page.evaluate(()=>rolesPreview.game.render());
   const tearing=await shot(page,name+'-tearing');
-  await page.clock.runFor(250);
+  await page.clock.runFor(300);
   const retained=(await state(page)).p;assert.ok(retained>0 && retained<0.4);
   assert.equal((await state(page)).tilt,0, "Packet returns upright without resetting tear progress");
-  await drag(page,start,await point(page,277.5,g.top+159),touch);
-  await page.clock.runFor(500);
+  await drag(page,start,await point(page,path.x+165*path.dx,g.top+path.y+165*path.dy),touch);
+  assert.equal((await state(page)).tilt,8*path.sign);
+  await page.clock.runFor(32);
+  await flush(page);
+  const completion=await state(page);assert.equal(completion.stage,'tearFinish');
+  const duration=completion.finishMs;
+  assert.equal(duration,2200,"PAG and Canvas share the slow card extraction timing");
+  await page.clock.runFor(948);await flush(page);
+  assert.equal((await state(page)).stage,'tearFinish');
+  const extracting=await shot(page,name+'-card-extraction');
+  await page.clock.runFor(1190);await flush(page);
+  assert.equal((await state(page)).stage,'tearFinish');
+  const completed=await shot(page,name+'-tear-completion');
+  await page.clock.runFor(64);await page.evaluate(()=>rolesPreview.game.render());
   assert.equal((await state(page)).stage,'ring');
-  results.push({case:name+' packet movement and drag-driven tear',opening,tearing});
+  results.push({case:name+' '+direction+' swipe: free-position tilt and complete packet opening',opening,tearing,extracting,completed,completionMode:completion.finishMode,duration});
 }
 async function selectAndReveal(session,name,expectPag=true,autoFinish=false) {
   const {page,touch}=session;
+  const shadows=await shadowSamples(page);assert.equal(shadows.length,10);
+  assert.ok(shadows.every(shadow=>shadow.ry/shadow.rx<=.241 && shadow.pixels.center>shadow.pixels.half && shadow.pixels.half>=shadow.pixels.edge && shadow.pixels.outside===0));
+  assert.ok(shadows[0].alpha<shadows[shadows.length-1].alpha);
+  results.push({case:name+' shadows stay flat, narrow with side cards, and have transparent feathered edges',shadows});
   for(let i=0;i<3;i++) {
     const front=await page.evaluate(()=>{
       const {requireGame}=rolesPreview,s=rolesPreview.game.store.state,vp=requireGame('js/env.js').viewport();
@@ -225,13 +250,13 @@ async function main() {
     for(const name of ['tear','flip','settle']){const audio=await fetch(base+'/assets/sfx/'+name+'.wav');assert.equal(audio.status,200);assert.equal(audio.headers.get('content-type'),'audio/wav');}
     const wasm=await fetch(base+'/vendor/pag/libpag.wasm');assert.equal(wasm.status,200);assert.equal(wasm.headers.get('content-type'),'application/wasm');
     results.push({case:'Only built preview files are served; WASM has correct MIME; no backend or workspace routes'});
-    browser=await chromium.launch({executablePath:await browserExecutable(),headless:true,args:['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
+    browser=await chromium.launch({executablePath:await browserExecutable(),headless:true,args:process.env.PAG_TEST_RENDERER==='native' ? (process.platform==='win32' ? ['--use-angle=d3d11'] : []) : ['--use-angle=swiftshader','--enable-unsafe-swiftshader']});
     // This visitor puts surveyor first on the frozen date, using the unchanged preview offer algorithm.
     const desktop=await open(browser,base,false,false,false,'surveyor-regression-13');
     const homepage=await shot(desktop.page,'desktop-home');
     assert.ok(desktop.requests.every(address=>new URL(address).origin===base));
     results.push({case:'Desktop preview loads independently with no external API requests',screenshot:homepage});
-    await chooseAndTear(desktop,'desktop');await selectAndReveal(desktop,'desktop');
+    await chooseAndTear(desktop,'desktop','left');await selectAndReveal(desktop,'desktop');
     const decoded=await desktop.page.evaluate(async()=>{
       const context=new AudioContext(),result=[];
       try{for(const name of ['tear','flip','settle']){const bytes=await(await fetch('assets/sfx/'+name+'.wav')).arrayBuffer();const audio=await context.decodeAudioData(bytes);result.push({name,duration:audio.duration,channels:audio.numberOfChannels});}}finally{await context.close();}
@@ -257,15 +282,16 @@ async function main() {
     assert.deepEqual(desktop.errors,[]);await desktop.context.close();
     const mobile=await open(browser,base,true);
     assert.equal((await state(mobile.page)).draw,null);
-    await chooseAndTear(mobile,'mobile');await selectAndReveal(mobile,'mobile',true,true);
+    await chooseAndTear(mobile,'mobile','up');await selectAndReveal(mobile,'mobile',true,true);
     await mobile.page.setViewportSize({width:430,height:920});await waitForResize(mobile.page,430);
     assert.equal(await mobile.page.evaluate(()=>rolesPreview.requireGame('js/env.js').size().width),430);
     assert.ok((await state(mobile.page)).draw);
     await mobile.page.getByRole('button',{name:'重新体验',exact:true}).click();await mobile.page.waitForLoadState('networkidle');
     assert.equal((await state(mobile.page)).stage,'pack');assert.equal((await state(mobile.page)).draw,null);
     assert.deepEqual(mobile.errors,[]);results.push({case:'Mobile touch, resize, independent visitor data and restart work'});await mobile.context.close();
-    const small=await open(browser,base,true,false,true);await chooseAndTear(small,'small-phone');await selectAndReveal(small,'small-phone',true,true);assert.deepEqual(small.errors,[]);await small.context.close();
-    const fallback=await open(browser,base,false,true);await chooseAndTear(fallback,'fallback');await selectAndReveal(fallback,'fallback',false,true);assert.deepEqual(fallback.errors,[]);await fallback.context.close();
+    const small=await open(browser,base,true,false,true);await chooseAndTear(small,'small-phone','down');await selectAndReveal(small,'small-phone',true,true);assert.deepEqual(small.errors,[]);await small.context.close();
+    const fallback=await open(browser,base,false,true);await chooseAndTear(fallback,'fallback','diagonal');await selectAndReveal(fallback,'fallback',false,true);assert.deepEqual(fallback.errors,[]);await fallback.context.close();
+    const rightSwipe=await open(browser,base);await chooseAndTear(rightSwipe,'right-swipe','right');assert.deepEqual(rightSwipe.errors,[]);await rightSwipe.context.close();
     await fs.writeFile(path.join(ARTIFACTS,'verification.json'),JSON.stringify({verifiedAt:new Date().toISOString(),environment:'Chromium, actual mouse and CDP touch input; deterministic timeline for screenshots',passed:results.length,results},null,2)+'\n');
     console.log(JSON.stringify({passed:results.length,results},null,2));
   } finally {if(browser)await browser.close();await new Promise(resolve=>server.close(resolve));}

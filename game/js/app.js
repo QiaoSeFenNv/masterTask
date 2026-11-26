@@ -19,6 +19,7 @@ var assets = require("./assets.js");
 var animation = require("./animation.js");
 var pack = require("./pack.js");
 var pagReveal = require("./pag-reveal.js");
+var pagTear = require("./pag-tear.js");
 var sfx = require("./sfx.js");
 
 var canvas = null;
@@ -52,6 +53,7 @@ function setCanvas(c) {
   canvas = c;
   draw.init(c);
   pagReveal.onFrame(requestFrame);
+  pagTear.onFrame(requestFrame);
   syncPag();
   resize();
 }
@@ -69,11 +71,23 @@ function requestFrame() {
   if (canvas) frameLoop.request();
 }
 
+/** Tear owns its file/surface only until the packet opens; the SDK stays shared. */
+function syncTearPag(st, kind) {
+  if (st.tab !== "today" || st.status !== "ready" || st.draw) { pagTear.release(); return; }
+  if (kind === "pack") { pagTear.preload(); return; }
+  if (kind === "opening" || kind === "tear" || kind === "tearFinish") {
+    if (assets.pack(st.anim.series) || !assets.pending()) pagTear.prepare(pack.seriesOf(st.anim.series));
+    return;
+  }
+  pagTear.release();
+}
+
 /** Warm PAG while the player opens/selects cards; discard role resources on exit. */
 function syncPag() {
   if (!canvas) return;
   var st = store.state;
   var kind = (st.anim || {}).kind;
+  syncTearPag(st, kind);
   if (st.tab !== "today" || st.status !== "ready") { pagReveal.release(); return; }
   if (kind === "reveal" && st.draw) { pagReveal.prepare(st.draw.role); return; }
   if (!st.draw) {
@@ -140,7 +154,7 @@ function entryZones(list) {
   });
 }
 function entryPoint(x, y, kind) {
-  if (entryFrame.tab !== store.state.tab || entryFrame.kind !== kind) return {x:x,y:y};
+  if (entryFrame.scale === 1 || entryFrame.tab !== store.state.tab || entryFrame.kind !== kind) return {x:x,y:y};
   return {x:entryFrame.cx + (x-entryFrame.cx)/entryFrame.scale,
     y:entryFrame.cy + (y-entryFrame.cy)/entryFrame.scale};
 }
@@ -157,8 +171,10 @@ function paint() {
   // 所有阶段在画之前推进；一帧内的状态和命中区始终对应同一画面。
   if (anim.kind === "opening" && time - anim.at >= pack.OPEN_MS) {
     store.enterTear();
-  } else if (anim.kind === "tear" && anim.doneAt && time - anim.doneAt >= pack.TEAR_FINISH_MS) {
-    store.enterRing();
+  } else if ((anim.kind === "tear" || anim.kind === "tearFinish") && anim.doneAt) {
+    if (anim.kind === "tear") store.enterTearFinish(pagTear.begin(anim.doneAt, pack.seriesOf(anim.series),anim.tearDirection || 1), pagTear.status().durationMs);
+    if (st.anim.finishMode === "pag" && pagTear.status().mode !== "pag") store.fallbackTearFinish();
+    if (time - st.anim.doneAt >= st.anim.finishMs) store.enterRing();
   } else if (anim.kind === "top" && time - anim.at >= pack.TOP_MS) {
     store.enterPick();
   } else if (anim.kind === "reveal" && time - anim.at >= pack.REVEAL_MS) {
@@ -280,14 +296,20 @@ function onTouchStart(e) {
   var p = toDesign(t);
   var packet = tearDragging(store.state) ? pack.tearRect(layout.contentTop(env.viewport())) : null;
   var packetPoint = entryPoint(p.x, p.y, "tear");
-  var tilting = packet && packetPoint.x >= packet.x && packetPoint.x <= packet.x + packet.w &&
-    packetPoint.y >= packet.y && packetPoint.y <= packet.y + packet.h;
+  function inPacket(point) {
+    return packet && point.x >= packet.x - 12 && point.x <= packet.x + packet.w + 12 &&
+      point.y >= packet.y && point.y <= packet.y + packet.h;
+  }
+  // 入场期间同时接受画面坐标和设计稿坐标，包边缘起手也能把玩。
+  var tilting = inPacket(packetPoint) || inPacket(p);
   drag = {
     startX: p.x,
     startY: p.y,
     lastX: p.x,
     lastY: p.y,
     prevX: p.x,
+    prevY: p.y,
+    tearDirection: 0,
     scroll: store.state.scroll,
     moved: false,
     turned: false,
@@ -302,7 +324,7 @@ function ringDragging(st) {
   return st.tab === "today" && !st.draw && st.anim && st.anim.kind === "ring";
 }
 
-/** 撕开阶段：横向划过包口 = 撕开（等玩家自己动手，不自动跑） */
+/** 撕开阶段：任意位置、任意方向的划动推进撕开，不要求沿封口划。 */
 function tearDragging(st) {
   return (
     st.tab === "today" &&
@@ -323,12 +345,20 @@ function onTouchMove(e) {
   drag.lastX = p.x;
   drag.lastY = p.y;
 
-  // 撕包口：只认往右的那一小段位移，撕口严格跟着手指走
+  // 使用实际划动距离；左右、上下、斜划都有效，点击和微小抖动不撕开。
   if (tearDragging(store.state)) {
-    var step = p.x - (drag.prevX == null ? drag.startX : drag.prevX);
-    if (drag.tilting) store.tiltTear(drag.tilt + dx / pack.TEAR_SWIPE * 8);
-    if (step > 0) store.swipeTear(step);
+    var stepX = p.x - (drag.prevX == null ? drag.startX : drag.prevX);
+    var stepY = p.y - (drag.prevY == null ? drag.startY : drag.prevY);
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+      if (!drag.tearDirection) {
+        drag.tearDirection = Math.abs(dx) >= Math.abs(dy) && dx < 0 ? -1 : 1;
+        stepX = dx; stepY = dy; // 达到拖动阈值后补上起手位移，不损失撕开距离。
+      }
+      var step = Math.sqrt(stepX * stepX + stepY * stepY);
+      if (step > 0) store.swipeTear(step,drag.tearDirection);
+    }
     drag.prevX = p.x;
+    drag.prevY = p.y;
     if (Math.abs(dx) > 4 || Math.abs(dy) > 4) drag.moved = true;
     requestFrame();
     return;
@@ -585,8 +615,8 @@ function boot() {
   var runtime = w && typeof w.createCanvas === "function" ? w.createCanvas() : null;
   if (runtime) setCanvas(runtime);
 
-  if (w && typeof w.onHide === "function") w.onHide(function () { frameLoop.pause(); pagReveal.pause(); sfx.pause(); });
-  if (w && typeof w.onShow === "function") w.onShow(function () { pagReveal.resume(); frameLoop.resume(); sfx.resume(); });
+  if (w && typeof w.onHide === "function") w.onHide(function () { frameLoop.pause(); pagReveal.pause(); pagTear.pause(); sfx.pause(); });
+  if (w && typeof w.onShow === "function") w.onShow(function () { pagReveal.resume(); pagTear.resume(); frameLoop.resume(); sfx.resume(); });
 
   if (w && typeof w.onTouchStart === "function") {
     w.onTouchStart(onTouchStart);

@@ -25,6 +25,7 @@ var sounds = {};
 var FILES = {};
 PACK_IDS.forEach(function (id) {
   FILES["pack:" + id] = "pack-" + id + ".jpg";
+  FILES["foil:" + id] = "packet-foil-" + id + ".png";
   FILES["bg:" + id] = "bg-" + id + ".jpg";
 });
 
@@ -82,6 +83,11 @@ function get(key) {
 /** 卡包外表（2:3 竖图） */
 function pack(seriesId) {
   return get("pack:" + seriesId);
+}
+
+/** Transparent satin highlights for seals and folds; the original art stays separate. */
+function foil(seriesId) {
+  return get("foil:" + seriesId);
 }
 
 /** 卡包背景（正方形） */
@@ -157,6 +163,7 @@ module.exports = {
   releaseSounds: releaseSounds,
   SOUND_FILES: SOUND_FILES,
   pack: pack,
+  foil: foil,
   bg: bg,
   onLoad: onLoad,
   pending: pending,

@@ -13,6 +13,11 @@ var assets = require("./assets.js");
 var animation = require("./animation.js");
 var effects = require("./effects.js");
 var pagReveal = require("./pag-reveal.js");
+var pagTear = require("./pag-tear.js");
+var tearTemplate = require("./pag-tear-template.js");
+var packetSurface = require("./packet-surface.js");
+var tearFlight = require("./tear-flight.js");
+var tearFlights = tearFlight.plan(10);
 
 var W = layout.W;
 var PAD = layout.PAD;
@@ -104,36 +109,16 @@ var cardFace = require("./cardface.js").paint;
 
 /** A shared packet surface for the picker and its movement into the tear stage. */
 function paintSeriesPacket(s, rect, opacity, labelOpacity) {
-  var x = rect.x, y = rect.y, w = rect.w, h = rect.h;
-  var c = draw.getCtx();
-  c.save();
-  c.globalAlpha = opacity;
-  if (!draw.image(assets.pack(s.id), x, y, w, h, 14, opacity))
-    draw.fillGradientRect(x, y, w, h, [s.top, s.mid, s.bottom], 160, 14);
-  strokeRound(x, y, w, h, 14, theme.frame, 1);
-  strokeRound(x + 5, y + 5, w - 10, h - 10, 11, "rgba(255,255,255,0.18)", 1);
-  c.beginPath();
-  c.moveTo(x + 6, y + 12);
-  for (var k = 0; k <= 10; k++) c.lineTo(x + 6 + ((w - 12) * k) / 10, y + 12 + (k % 2 ? 4 : 0));
-  c.strokeStyle = s.accent;
-  c.globalAlpha = opacity * 0.7;
-  c.lineWidth = 1;
-  c.stroke();
-  var cx = x + w / 2, cy = y + h * 0.52, d = Math.min(w, h) * 0.19;
-  c.beginPath();
-  c.moveTo(cx, cy - d); c.lineTo(cx + d * 0.62, cy); c.lineTo(cx, cy + d); c.lineTo(cx - d * 0.62, cy); c.closePath();
-  c.fillStyle = s.accent;
-  c.globalAlpha = opacity * 0.55;
-  c.fill();
-  draw.text(s.name, cx, y + h - 34, {size:15,weight:"600",serif:true,color:"#ffffff",align:"center",
-    alpha:opacity*labelOpacity,shadow:{color:"rgba(0,0,0,0.55)",blur:10,y:1}});
-  draw.text(s.desc, cx, y + h - 16, {size:9.5,color:"rgba(255,255,255,0.78)",align:"center",
-    alpha:opacity*labelOpacity,shadow:{color:"rgba(0,0,0,0.45)",blur:6,y:0}});
+  var c=draw.getCtx();c.save();c.globalAlpha=opacity;
+  packetSurface.draw(c,assets.pack(s.id),rect,s);
+  var cx=rect.x+rect.w/2,alpha=opacity*labelOpacity;
+  draw.text(s.name,cx,rect.y+rect.h+22,{size:15,weight:"600",serif:true,color:theme.text,align:"center",alpha:alpha});
+  draw.text(s.desc,cx,rect.y+rect.h+41,{size:9.5,color:theme.bodyBright,align:"center",alpha:alpha});
   c.restore();
 }
 function seriesRect(vp, index, at) {
-  var gap = 12, w = (layout.innerW() - gap * (pack.SERIES.length - 1)) / pack.SERIES.length;
-  return {x:PAD + index*(w+gap),y:layout.contentTop(vp)+54+Math.sin(at/700+index)*2,w:w,h:208};
+  var gap=12,w=(layout.innerW()-gap*(pack.SERIES.length-1))/pack.SERIES.length;
+  return {x:PAD+index*(w+gap),y:layout.contentTop(vp)+68+Math.sin(at/700+index)*2,w:w,h:w*210/150};
 }
 function renderSeriesPick(vp, state, options) {
   options = options || {};
@@ -146,7 +131,8 @@ function renderSeriesPick(vp, state, options) {
     if (s.id === options.skip) return;
     var rect = seriesRect(vp,i,at);
     paintSeriesPacket(s,rect,opacity,1);
-    zones.push({id:"series",seriesId:s.id,rect:rect});
+    // The printed pouch and its caption are one selectable option.
+    zones.push({id:"series",seriesId:s.id,rect:{x:rect.x,y:rect.y,w:rect.w,h:rect.h+48}});
   });
   return {zones:zones,contentH:layout.contentH(vp)};
 }
@@ -187,8 +173,8 @@ function tearOffset(t, amp, seed) {
 /**
  * 撕开这一阶段**等玩家自己划**，不再按时间自动跑完。
  *
- * 手势是「沿包口从左往右划过」：撕口的位置严格等于手指走过的距离，
- * 划满整条包口才算撕通。松手会回缩，没有那种「突然自己裂开」的感觉。
+ * 在包面任意位置、任意方向划动都有效，位移推进封口剥离。
+ * 累计到原来的距离才撕通，松手保持原有回弹；不要求对齐封口。
  *
  * 之前那个版本把上半张绕撕口转了 35°，看起来像翻书页而不是撕纸，
  * 所以这里改成：已经撕下来的那一条**整条抬起来**跟着手指走，
@@ -198,7 +184,7 @@ function renderTear(vp, state, anim) {
   var zones = [];
   var top = layout.contentTop(vp);
   var p = pack.clamp01(anim.p || 0); // 撕口走过包口全长的比例
-  var fin = anim.doneAt ? pack.clamp01((now() - anim.doneAt) / pack.TEAR_FINISH_MS) : 0;
+  var fin = anim.doneAt ? pack.clamp01((now() - anim.doneAt) / (anim.finishMs || pack.TEAR_FINISH_MS)) : 0;
   var s = pack.seriesOf(anim.series);
   var c = draw.getCtx();
   var opacity = c.globalAlpha;
@@ -211,21 +197,43 @@ function renderTear(vp, state, anim) {
   var y0 = packet.y;
   var cw = w;
   var ch = h;
+  var exit = tearFlight.packet(fin);
 
-  // 撕口在包口那条锯齿线上：包面靠上的三分之一
-  var seamY = y0 + ch * 0.30;
-  var amp = 1.6 + p * 3.4; // 锯齿随进度变粗，撕口「裂长」
+  // 从真正的封口剥离；起手位置无需与它对齐，闭合时不画撕线。
+  var seamY = y0 + packetSurface.SEAM;
+  var direction = anim.tearDirection === -1 ? -1 : 1;
+  var amp = 0.9 + p * 1.8; // 锯齿随进度变粗，撕口「裂长」
   var seed = (s.id.charCodeAt(0) || 1) * 0.37;
-  var tearX = x0 + cw * p; // 已经撕到哪儿了
+  var tearX = x0 + cw * (direction > 0 ? p : 1-p);
+  var tornLeft = direction > 0 ? x0 : tearX;
+  var tornRight = direction > 0 ? tearX : x0+cw;
+
+  // Cards leave the mouth separately, then converge on the unchanged ring slots.
+  if (fin > 0) {
+    tearFlights.forEach(function(flight) {
+      var frame = tearFlight.sample(flight,fin);
+      if (frame.opacity <= 0) return;
+      c.save(); c.translate(frame.x,top+frame.y); c.rotate(frame.rotation*Math.PI/180);
+      c.scale(frame.scaleX,frame.scaleY); c.globalAlpha *= frame.opacity;
+      cardBack(-46,-69,92,138,9,s,1); c.restore();
+    });
+  }
+
+  if (fin > 0) {
+    var mouth = {x:x0,y:seamY-6,w:cw,h:12};
+    var paper = animation.progress(anim.doneAt,pack.TEAR_FINISH_MS);
+    effects.halo(mouth, s.accent, Math.sin(paper*Math.PI)*0.10);
+    effects.burst(mouth, paper, s.accent, seed, 6);
+  }
 
   /* 撕口后面那团光：外景已经整页铺好了（见 backdrop.js），这里只补系列色 */
   if (typeof c.createRadialGradient === "function") {
-    var gx = x0 + cw * 0.5 * p;
+    var gx = x0 + cw * (direction > 0 ? 0.5*p : 1-0.5*p);
     var g = c.createRadialGradient(gx, seamY, 0, gx, seamY, 140 + p * 70);
     g.addColorStop(0, s.accent);
     g.addColorStop(1, "rgba(0,0,0,0)");
     c.save();
-    c.globalAlpha = opacity * (0.06 + p * 0.30);
+    c.globalAlpha = opacity * (0.02 + p * 0.06) * exit.opacity;
     c.fillStyle = g;
     c.fillRect(0, top - 40, W, 440);
     c.restore();
@@ -233,19 +241,24 @@ function renderTear(vp, state, anim) {
 
   /** 有生成图就贴图，没有就退回渐变 */
   function body(img) {
-    if (!draw.image(img, x0, y0, cw, ch, 0, c.globalAlpha)) {
-      draw.fillGradientRect(x0, y0, cw, ch, [s.top, s.mid, s.bottom], 160, 0);
-    }
+    packetSurface.draw(c,img,packet,s,{shadow:false,tilt:anim.tilt || 0});
   }
 
   var img = assets.pack(s.id);
 
   // 只旋转还连着的包身；已撕下的纸条在这个作用域外保持平移。
   c.save();
-  c.translate(cx, y0 + ch / 2);
+  c.translate(cx, y0 + ch / 2 + exit.drop);
   c.rotate((anim.tilt || 0) * Math.PI / 180);
+  c.scale(exit.scale,exit.scale);
   c.translate(-cx, -(y0 + ch / 2));
+  c.globalAlpha *= exit.opacity;
+  packetSurface.draw(c,img,packet,s,{shadowOnly:true,tilt:anim.tilt || 0});
 
+  if (p > 0) packetSurface.interior(c,{x:x0-5,y:seamY-20,w:160,h:40},s,Math.min(1,p*2));
+  if (p <= 0) {
+    body(img);
+  } else {
   /* --- 撕口以下：完整留着 --- */
   c.save();
   c.beginPath();
@@ -259,44 +272,44 @@ function renderTear(vp, state, anim) {
   c.closePath();
   c.clip();
   body(img);
-  strokeRound(x0, y0, cw, ch, 14, theme.frame, 1);
   c.restore();
 
   /* --- 撕口以上、还没撕到的那一段（右边）：也留着 --- */
   if (p < 1) {
     c.save();
     c.beginPath();
-    c.moveTo(x0 + cw, seamY + tearOffset(1, amp, seed));
-    c.lineTo(x0 + cw, y0 - 2);
-    c.lineTo(tearX, y0 - 2);
-    c.lineTo(tearX, seamY);
+    var keepLeft = direction > 0 ? tearX : x0;
+    var keepRight = direction > 0 ? x0+cw : tearX;
+    c.moveTo(keepLeft,y0-2);c.lineTo(keepRight,y0-2);
+    c.lineTo(keepRight,seamY+tearOffset((keepRight-x0)/cw,amp,seed));
     for (var j = TEAR_SEGS; j >= 0; j--) {
       var tj = j / TEAR_SEGS;
-      if (x0 + cw * tj < tearX) break;
+      if (x0+cw*tj < keepLeft || x0+cw*tj > keepRight) continue;
       c.lineTo(x0 + cw * tj, seamY + tearOffset(tj, amp, seed));
     }
+    c.lineTo(keepLeft,seamY+tearOffset((keepLeft-x0)/cw,amp,seed));
     c.closePath();
     c.clip();
     body(img);
-    strokeRound(x0, y0, cw, ch, 14, theme.frame, 1);
     c.restore();
+  }
+
   }
 
   /* --- 留在包上的那侧撕口：一条发亮的边 + 翘起的纤维 --- */
   if (p > 0.02) {
     var edgeA = Math.cos(((p - 0.02) / 0.98) * Math.PI * 0.5); // 越接近撕通越淡
     c.save();
-    c.globalAlpha = opacity * Math.max(0.12, edgeA) * 0.75;
+    c.globalAlpha = opacity * Math.max(0.12, edgeA) * 0.34;
     c.strokeStyle = s.accent;
     c.lineWidth = 1.4;
     c.beginPath();
-    c.moveTo(x0, seamY + tearOffset(0, amp, seed));
+    c.moveTo(tornLeft,seamY+tearOffset((tornLeft-x0)/cw,amp,seed));
     for (var m = 1; m <= TEAR_SEGS; m++) {
       var tm = m / TEAR_SEGS;
-      if (x0 + cw * tm > tearX) break;
+      if (x0+cw*tm < tornLeft || x0+cw*tm > tornRight) continue;
       c.lineTo(x0 + cw * tm, seamY + tearOffset(tm, amp, seed));
     }
-    c.lineTo(tearX, y0);
     c.stroke();
     c.restore();
   }
@@ -305,37 +318,37 @@ function renderTear(vp, state, anim) {
 
   /* --- 已经撕下来的那一条：整条抬起来，跟着手指往右上方走 --- */
   if (p > 0) {
-    var dx = 6 + p * 22; // 往右，跟着滑走的手指
-    var dy = -4 - p * 16 - fin * 120; // 往上飘
-    var a = opacity * (1 - fin * 0.9) * (1 - p * 0.05);
+    var dx = (6 + p * 22) * direction; // 与横向拉扯方向一致，纸条不旋转
+    var paperP = anim.doneAt ? animation.progress(anim.doneAt,pack.TEAR_FINISH_MS) : 0;
+    var dy = -4 - p * 16 - paperP * 90; // 往上飘
+    var a = opacity * (1 - paperP) * (1 - p * 0.05);
 
     c.save();
     c.globalAlpha = a;
     c.translate(dx, dy);
     c.beginPath();
-    c.moveTo(x0, y0 - 2);
-    c.lineTo(tearX, y0 - 2);
-    c.lineTo(tearX, seamY);
+    c.moveTo(tornLeft,y0-2);
+    c.lineTo(tornRight,y0-2);
+    c.lineTo(tornRight,seamY+tearOffset((tornRight-x0)/cw,amp,seed));
     for (var k = TEAR_SEGS; k >= 0; k--) {
       var tk = k / TEAR_SEGS;
       var sx = x0 + cw * tk;
-      if (sx > tearX) continue;
+      if (sx < tornLeft || sx > tornRight) continue;
       c.lineTo(sx, seamY + tearOffset(tk, amp, seed));
     }
     c.closePath();
     c.clip();
     body(img);
-    strokeRound(x0, y0, cw, ch, 14, theme.frame, 1);
 
     // 这条纸的下沿毛边：白纤维，纸被撕开就是这个样子
     c.globalAlpha = a * 0.8;
-    c.strokeStyle = "rgba(255,255,255,0.85)";
+    c.strokeStyle = "rgba(255,255,255,0.36)";
     c.lineWidth = 0.8;
     c.beginPath();
     for (var f = 0; f <= TEAR_SEGS; f++) {
       var tf = f / TEAR_SEGS;
       var fx = x0 + cw * tf;
-      if (fx > tearX) continue;
+      if (fx < tornLeft || fx > tornRight) continue;
       var fy = seamY + tearOffset(tf, amp, seed);
       var n1 = tearNoise(f + 11, seed) - 0.5;
       var n2 = tearNoise(f + 53, seed) - 0.5;
@@ -349,14 +362,27 @@ function renderTear(vp, state, anim) {
 
 
   var hint =
-    fin > 0 ? "撕开了" : p <= 0.01 ? "从左边划过包口" : p < 1 ? "继续往右划…" : "松手";
+    fin > 0 ? "撕开了" : p <= 0.01 ? "划动卡包，撕开包装" : p < 1 ? "继续划开…" : "撕开了";
   draw.text(hint, W / 2, y0 + ch + 54, {
     size: 12,
     color: theme.muted,
     align: "center",
+    alpha: fin > 0 ? 0 : opacity * exit.opacity,
   });
 
   return { zones: zones, contentH: layout.contentH(vp) };
+}
+
+/** The complete transparent PAG packet replaces, rather than doubles, the Canvas packet. */
+function renderTearFinish(vp, state, anim) {
+  var top = layout.contentTop(vp);
+  var s = pack.seriesOf(anim.series);
+  var finish = animation.progress(anim.doneAt, anim.finishMs);
+  if (anim.finishMode === "pag" && pagTear.paint(draw.getCtx(), anim.doneAt, s,
+      {x:0,y:top,w:tearTemplate.width,h:tearTemplate.height,direction:anim.tearDirection || 1}, finish)) {
+    return {zones:[],contentH:layout.contentH(vp)};
+  }
+  return renderTear(vp, state, anim);
 }
 
 /* ---------------- 阶段三：环形十张 ---------------- */
@@ -385,24 +411,24 @@ function anyFlipping(state) {
   return false;
 }
 
-/** 牌底下的投影：越靠前越实，让这一摞看着是立在空中的 */
+/** 卡底的柔和接触阴影：侧转时收窄，远处更淡，始终保持扁椭圆。 */
 function cardShadow(slot, w, h) {
   var c = draw.getCtx();
-  var near = pack.clamp01(slot.depth);
+  if (typeof c.createRadialGradient !== "function") return;
+  var rx = w * slot.wscale * 0.46;
+  var ry = Math.min(10 * slot.scale, rx * 0.24);
+  if (rx <= 0 || ry <= 0) return;
   c.save();
-  c.globalAlpha *= 0.1 + near * 0.26;
-  c.fillStyle = "#000";
-  c.beginPath();
-  if (typeof c.ellipse === "function") {
-    c.ellipse(slot.x, slot.y + h / 2 + 14, w * 0.46, 13, 0, 0, Math.PI * 2);
-  } else {
-    c.moveTo(slot.x - w * 0.46, slot.y + h / 2 + 14);
-    c.lineTo(slot.x + w * 0.46, slot.y + h / 2 + 14);
-    c.lineTo(slot.x + w * 0.3, slot.y + h / 2 + 26);
-    c.lineTo(slot.x - w * 0.3, slot.y + h / 2 + 26);
-    c.closePath();
-  }
-  c.fill();
+  c.globalAlpha *= 0.10 + pack.clamp01(slot.depth) * 0.22;
+  c.translate(slot.x, slot.y + h / 2);
+  c.scale(rx, ry);
+  var shadow = c.createRadialGradient(0, 0, 0, 0, 0, 1);
+  shadow.addColorStop(0, "rgba(0,0,0,0.64)");
+  shadow.addColorStop(0.30, "rgba(0,0,0,0.38)");
+  shadow.addColorStop(0.65, "rgba(0,0,0,0.11)");
+  shadow.addColorStop(1, "rgba(0,0,0,0)");
+  c.fillStyle = shadow;
+  c.fillRect(-1, -1, 2, 2);
   c.restore();
 }
 
@@ -721,6 +747,7 @@ function render(vp, state) {
   }
   if (kind === "opening") return renderOpening(vp, state, anim);
   if (kind === "tear") return renderTear(vp, state, anim);
+  if (kind === "tearFinish") return renderTearFinish(vp, state, anim);
   if (kind === "ring") return renderRing(vp, state, anim);
   if (kind === "top") return renderTop(vp, state, anim);
   if (kind === "pick") return renderPick(vp, state);
@@ -735,6 +762,7 @@ function busy(state) {
     // 撕开等玩家划；但撕通之后那条纸还在飘，这一段要连着出帧
     return Boolean(anim.doneAt) && now() - anim.doneAt < pack.TEAR_FINISH_MS;
   }
+  if (anim.kind === "tearFinish") return now() - anim.doneAt < anim.finishMs;
   if (anim.kind === "reveal") return since(anim) < pack.REVEAL_MS;
   if (anim.kind === "ring") return true; // 牌一直上下漂浮，得连着出帧
   if (anim.kind === "top") return since(anim) < pack.TOP_MS;

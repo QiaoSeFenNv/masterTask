@@ -7,6 +7,10 @@ const ROOT = path.resolve(__dirname, '..');
 const WEB = path.join(ROOT, 'web');
 const OUTPUT = path.join(WEB, 'dist');
 async function build() {
+  // Repackage the existing tear asset; generated Base64 is never required in a fresh clone.
+  await require("./pack-pag-tear.cjs").packTearTemplate(
+    JSON.parse(await fs.readFile(path.join(ROOT,"tools/pag/tear-template.json"),"utf8")),
+    await fs.readFile(path.join(ROOT,"game/assets/pag/tear.pag")));
   // Delete only this generated directory; resolve its parent before any recursive operation.
   const root = await fs.realpath(ROOT);
   const parent = await fs.realpath(WEB);
@@ -22,7 +26,7 @@ async function build() {
   }
   const roles = JSON.parse(await fs.readFile(path.join(ROOT, 'shared/roles.json'), 'utf8'));
   modules.push(['data/roles.js', 'module.exports = ' + JSON.stringify({version: roles.version, roles: roles.roles}) + ';']);
-  for (const name of ['data/reveal-pag.js', 'vendor/pag/libpag.js'])
+  for (const name of ['data/reveal-pag.js', 'data/tear-pag.js', 'vendor/pag/libpag.js'])
     modules.push([name, await fs.readFile(path.join(ROOT, 'game', name), 'utf8')]);
   const loader = String.raw`
 const cache = Object.create(null);
@@ -55,9 +59,11 @@ export function requireGame(requested, parent = '') {
   await fs.writeFile(path.join(OUTPUT, 'game.bundle.js'), bundle);
   for (const name of ['index.html', 'style.css', 'main.js', 'preview-api.js', 'wx-bridge.js', 'favicon.svg'])
     await fs.copyFile(path.join(WEB, name), path.join(OUTPUT, name));
-  for (const series of ['deep', 'dusk', 'dawn']) for (const kind of ['pack', 'bg']) {
-    const name = kind + '-' + series + '.jpg';
-    await fs.copyFile(path.join(ROOT, 'game/assets', name), path.join(OUTPUT, 'assets', name));
+  // The same image manifest powers the game loader and the browser build.
+  for (const name of Object.values(require('../game/js/assets.js').FILES)) {
+    const target=path.join(OUTPUT,'assets',name);
+    await fs.mkdir(path.dirname(target),{recursive:true});
+    await fs.copyFile(path.join(ROOT,'game/assets',name),target);
   }
   for (const file of Object.values(require('../game/js/assets.js').SOUND_FILES)) {
     const target=path.join(OUTPUT,'assets',file);

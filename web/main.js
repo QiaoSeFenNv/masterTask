@@ -37,7 +37,7 @@ globalThis.rolesPreview = {game, requireGame};
 function updateHint() {
   const state = game.store.state;
   const hints = {pack: '选一个卡包，开启今天的角色', opening: '卡包就位，准备撕开',
-    tear: '按住包口，从左向右拖动撕开', ring: '左右拖动转盘，点开三张卡',
+    tear: '在卡包上任意位置、任意方向划动撕开', tearFinish: '卡包已打开，卡牌正在出现', ring: '左右拖动转盘，点开三张卡',
     top: '三张候选正在就位', pick: '选中一张角色，再确认落定', reveal: '揭晓后可点击继续'};
   status.textContent = state.status !== 'ready' ? '正在准备今天的卡包…' :
     (hints[state.anim.kind] || '完成角色任务，也可以看看日历和图鉴');

@@ -28,7 +28,7 @@ function setupBrowser(options) {
   window.preview={options,main,frames,canvases:[],pagPaints:0,flushes:0,drawRequests:0};
   const ctx=main.getContext('2d');
   const nativeDraw=ctx.drawImage.bind(ctx);
-  ctx.drawImage=(source,...args)=>{if(source && source.previewType==='webgl')preview.pagPaints++;return nativeDraw(source,...args);};
+  ctx.drawImage=(source,...args)=>{if(source && (source.previewType==='webgl'||source.isPAGFrame))preview.pagPaints++;return nativeDraw(source,...args);};
   window.wx={
     env:{USER_DATA_PATH:'/preview-cache'},
     getStorageSync:key=>storage.get(key)||'',setStorageSync:(key,value)=>storage.set(key,value),removeStorageSync:key=>storage.delete(key),
@@ -61,6 +61,7 @@ function setupBrowser(options) {
 }
 function installModules(sources) {
   if(preview.options.failTemplate)delete sources["data/reveal-pag.js"];
+  if(preview.options.failTearTemplate)delete sources["data/tear-pag.js"];
   const cache={};
   function normalize(value){const parts=[];for(const part of value.split('/')){if(part==='..')parts.pop();else if(part&&part!=='.')parts.push(part);}return parts.join('/');}
   function load(file,parent='') {
@@ -91,10 +92,21 @@ async function gamePage(browser,base,options={}) {
   await page.evaluate(setupBrowser,options);
   await page.evaluate(installModules,await sourceModules());
   await page.evaluate(()=>{
-    preview.app=gameRequire('js/app.js');preview.store=gameRequire('js/store.js');preview.pag=gameRequire('js/pag-reveal.js');
+    preview.app=gameRequire('js/app.js');preview.store=gameRequire('js/store.js');preview.pag=gameRequire('js/pag-reveal.js');preview.tear=gameRequire('js/pag-tear.js');preview.tearFlushes=0;
     preview.layout=gameRequire('js/layout.js');preview.animation=gameRequire('js/animation.js');preview.pack=gameRequire('js/pack.js');
     const adapter=gameRequire('js/pag-runtime.js'),flush=adapter.flush;
     adapter.flush=(resource,progress)=>{preview.flushes++;return flush(resource,progress);};
+    const tearAdapter=gameRequire("js/pag-tear-runtime.js"),tearFlush=tearAdapter.flush,tearCreate=tearAdapter.create;
+    preview.poseCreated=0;preview.poseReleased=0;
+    tearAdapter.create=async series=>{
+      const resource=await tearCreate(series);preview.tearResource=resource;
+      for(const control of resource.poseControls)for(const handle of [control.layer,control.matrix]){
+        const destroy=handle.destroy;preview.poseCreated++;
+        handle.destroy=function(){preview.poseReleased++;return destroy.call(this);};
+      }
+      return resource;
+    };
+    tearAdapter.flush=(resource,progress,direction)=>{preview.tearFlushes++;if(preview.options.failTearFlush)return Promise.reject(new Error("Simulated tear flush failure"));return tearFlush(resource,progress,direction);};
     preview.app.start();
   });
   await page.waitForFunction(()=>preview.store.state.status==='ready');
@@ -104,7 +116,8 @@ async function selectRole(page,index) {
   return page.evaluate(async index=>{
     const {store,app,pack,pag}=preview;
     store.chooseSeries('deep');store.enterTear();store.swipeTear(pack.TEAR_SWIPE*2);
-    app.render(store.state.anim.doneAt+pack.TEAR_FINISH_MS+1);
+    app.render(store.state.anim.doneAt+gameRequire("js/tear-flight.js").DURATION_MS+1);
+    if(store.stage()!=="ring")throw new Error("Reveal test must finish card extraction before flipping candidates");
     for(let i=0;i<3;i++)store.flipCard(preview.roles[i].id);
     app.render(store.state.anim.at+pack.TOP_MS+1);
     store.selectSlot(preview.roles[index].id);
@@ -150,7 +163,65 @@ async function templateContract(browser,base) {
     });
   } finally {await page.close();}
 }
+
+async function beginTear(page,series='deep',direction=1) {
+  await page.waitForFunction(series=>Boolean(gameRequire('js/assets.js').pack(series) && gameRequire('js/assets.js').foil(series)),series);
+  return page.evaluate(async ({series,direction})=>{
+    const {store,app,pack,tear}=preview;
+    store.state.anim={kind:'pack',at:Date.now(),series:''};store.emit();store.chooseSeries(series);store.enterTear();
+    const ready=await tear.prepare(pack.seriesOf(series));store.swipeTear(pack.TEAR_SWIPE,direction);
+    const at=store.state.anim.doneAt,before=preview.pagPaints;app.render(at);const firstRenderPagPaints=preview.pagPaints-before;await tear.settled();app.render(at);
+    return {ready,at,stage:store.stage(),mode:store.state.anim.finishMode,status:tear.status(),drawRequests:preview.drawRequests,firstRenderPagPaints};
+  },{series,direction});
+}
+async function tearPose(page) {
+  return page.evaluate(()=>{
+    const spec=gameRequire('js/pag-tear-template.js'),controls=preview.tearResource.poseControls;
+    function sample(index){
+      const control=controls.find(control=>control.index===index),texture=spec.textures.find(texture=>texture.imageIndex===index);
+      const m=control.layer.getTotalMatrix(),x=texture.width/2,y=texture.height/2;
+      try{return {a:m.a,b:m.b,c:m.c,d:m.d,x:m.a*x+m.c*y+m.tx,y:m.b*x+m.d*y+m.ty};}finally{m.destroy();}
+    }
+    return {controls:controls.length,body:sample(5),strip:sample(0),mouth:sample(4)};
+  });
+}
+async function tearFrame(page,elapsed) {
+  return page.evaluate(async elapsed=>{
+    const {app,store,tear}=preview,at=store.state.anim.doneAt;
+    app.render(at+elapsed);await tear.settled();app.render(at+elapsed);await tear.settled();
+    return {stage:store.stage(),mode:store.state.anim.finishMode,status:tear.status(),drawRequests:preview.drawRequests,
+      hash:preview.main.toDataURL('image/png'),buffers:preview.canvases.filter(c=>c.previewType==='webgl').map(c=>[c.width,c.height])};
+  },elapsed);
+}
+async function tearTemplateContract(browser,base) {
+  const page=await browser.newPage({viewport:{width:375,height:500}});
+  try {
+    await page.goto(base);await page.evaluate(setupBrowser,{dpr:1});await page.evaluate(installModules,await sourceModules());
+    return await page.evaluate(async()=>{
+      const sdk=await gameRequire('vendor/pag/libpag.js').PAGInit({locateFile:()=> 'vendor/pag/libpag.wasm.br'});
+      const spec=gameRequire('js/pag-tear-template.js'),file=await sdk.PAGFile.load(await(await fetch('assets/pag/tear.pag')).arrayBuffer());
+      const names=[];
+      for(const texture of spec.textures){const layers=file.getLayersByEditableIndex(texture.imageIndex,5);try{
+        for(let i=0;i<layers.size();i++){const layer=layers.get(i);try{names.push(layer.layerName());}finally{layer.destroy();}}
+      }finally{layers.delete();}}
+      const canvas=wx.createOffscreenCanvas({type:'webgl',width:spec.width,height:spec.height});
+      canvas.getContext('webgl',{alpha:true,preserveDrawingBuffer:true,depth:false,stencil:false,antialias:false});
+      const view=await sdk.PAGView.init(file,canvas,{firstFrame:false}),sample=new OffscreenCanvas(spec.width,spec.height),ctx=sample.getContext('2d'),frames=[];
+      try {
+        for(const progress of [0,.4,.85]){view.setProgress(progress);await view.flush();ctx.clearRect(0,0,spec.width,spec.height);ctx.drawImage(canvas,0,0);
+          const pixels=ctx.getImageData(0,0,spec.width,spec.height).data;let visible=0,transparent=0,hash=2166136261;
+          for(let i=0;i<pixels.length;i++){hash=Math.imul(hash^pixels[i],16777619);if(i%4===3){if(pixels[i])visible++;else transparent++;}}
+          frames.push({progress,visible,transparent,hash:hash>>>0,cornerAlpha:pixels[3]});}
+        return {width:file.width(),height:file.height(),duration:file.duration(),fps:file.frameRate(),images:file.numImages(),names,frames};
+      }finally{view.destroy();file.destroy();}
+    });
+  }finally{await page.close();}
+}
+
 async function main() {
+  await require("./pack-pag-tear.cjs").packTearTemplate(
+    JSON.parse(await fs.readFile(path.join(ROOT,"tools/pag/tear-template.json"),"utf8")),
+    await fs.readFile(path.join(GAME,"assets/pag/tear.pag")));
   await fs.mkdir(ARTIFACTS,{recursive:true});
   let server,browser;
   const results=[];
@@ -171,11 +242,65 @@ async function main() {
     });
     await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));
     const base='http://127.0.0.1:'+server.address().port+'/';
-    browser=await chromium.launch({executablePath:await browserExecutable(),headless:true,args:['--enable-unsafe-swiftshader','--use-angle=swiftshader']});
+    browser=await chromium.launch({executablePath:await browserExecutable(),headless:true,args:process.env.PAG_TEST_RENDERER==='native' ? (process.platform==='win32' ? ['--use-angle=d3d11'] : []) : ['--enable-unsafe-swiftshader','--use-angle=swiftshader']});
     const contract=await templateContract(browser,base);
     assert.deepEqual([contract.width,contract.height,contract.duration,contract.fps],[375,500,1000000,60]);
     assert.deepEqual(contract.imageLayers,['card']);assert.ok(contract.visible>20000);assert.ok(contract.transparent>20000);
     results.push({case:'PAG template decoded; editable index 0 is card; alpha retained',...contract});
+
+    const tearContract=await tearTemplateContract(browser,base);
+    assert.deepEqual([tearContract.width,tearContract.height,tearContract.duration,tearContract.fps],[375,500,2200000,60]);
+    assert.equal(tearContract.images,8);assert.ok(tearContract.names.includes('packet-mouth'));assert.equal(tearContract.names.filter(name=>name.startsWith('card-back-')).length,10);
+    assert.equal(tearContract.names.filter(name=>name.startsWith('fiber-')).length,12);assert.ok(tearContract.frames.every(frame=>frame.visible>10000&&frame.transparent>90000&&frame.cornerAlpha===0));
+    assert.equal(new Set(tearContract.frames.map(frame=>frame.hash)).size,3);
+    results.push({case:'PAG tear contract, foil packet/curl/fibers/ten staggered backs, transparent timeline',...tearContract});
+    const tearing=await gamePage(browser,base,{dpr:3});let opened=await beginTear(tearing.page);
+    assert.equal(opened.ready,true,JSON.stringify(opened.status));assert.equal(opened.stage,'tearFinish');assert.equal(opened.mode,'pag');assert.equal(opened.drawRequests,0);
+    const rightPose=await tearPose(tearing.page);assert.equal(rightPose.controls,5);assert.ok(rightPose.body.b>0);
+    const tearMiddle=await tearFrame(tearing.page,230),tearImage=await screenshot(tearing.page,'tear-deep-completion');
+    const alphaPixels=await tearing.page.evaluate(()=>{
+      const r=preview.tearResource,gl=r.gl,pixels=new Uint8Array(r.canvas.width*r.canvas.height*4);
+      gl.readPixels(0,0,r.canvas.width,r.canvas.height,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+      let bad=0,translucent=0;for(let i=0;i<pixels.length;i+=4){
+        if(pixels[i+3]>0&&pixels[i+3]<255)translucent++;
+        if(Math.max(pixels[i],pixels[i+1],pixels[i+2])>pixels[i+3]+2)bad++;
+      }return {bad,translucent};
+    });
+    assert.equal(alphaPixels.bad,0,"PAG edges are premultiplied correctly; soft foil must not acquire white outlines");
+    assert.ok(alphaPixels.translucent>100,"Transparent edges are retained");
+    assert.equal(tearMiddle.status.mode,'pag');assert.ok(tearMiddle.buffers.every(([w,h])=>w<=563&&h<=751));
+    const tearLate=await tearFrame(tearing.page,1900);assert.equal(tearLate.stage,'tearFinish');assert.notEqual(tearMiddle.hash,tearLate.hash);
+    await tearFrame(tearing.page,2200);assert.equal(await tearing.page.evaluate(()=>preview.store.stage()),'ring');
+    assert.equal(await tearing.page.evaluate(()=>preview.tear.status().ready),false);assert.equal(await tearing.page.evaluate(()=>preview.drawRequests),0);
+    assert.ok(await tearing.page.evaluate(()=>preview.canvases.filter(c=>c.previewType==='webgl').every(c=>c.width===1&&c.height===1)));
+    results.push({case:'Prepared PAG slowly extracts cards over 2200ms, enters ring without draw POST, caps buffers and releases',alphaPixels,screenshot:tearImage});
+    opened=await beginTear(tearing.page,'dusk');assert.equal(opened.ready,true);const duskFrame=await tearFrame(tearing.page,230);
+    assert.notEqual(duskFrame.hash,tearMiddle.hash,'Same tear template replaces packet art and series-color textures');
+    const duskImage=await screenshot(tearing.page,'tear-dusk-completion');
+    const tearHidden=await tearing.page.evaluate(async()=>{preview.hide();const before=preview.tearFlushes;preview.tear.seek(.9);await preview.tear.settled();return {before,after:preview.tearFlushes,pending:preview.frames.size};});
+    assert.equal(tearHidden.before,tearHidden.after);assert.equal(tearHidden.pending,0);
+    await tearing.page.evaluate(()=>preview.show());await tearFrame(tearing.page,3000);assert.equal(await tearing.page.evaluate(()=>preview.store.stage()),'ring');
+    assert.equal(await tearing.page.evaluate(()=>preview.tear.status().ready),false);assert.deepEqual(tearing.errors,[]);
+    results.push({case:'Tear series artwork replacement and background pause/resume',screenshot:duskImage});
+    opened=await beginTear(tearing.page,'deep',-1);assert.equal(opened.ready,true);assert.equal(opened.mode,'pag');
+    assert.equal(opened.firstRenderPagPaints,0,'Left tear waits for its own direction before painting PAG');
+    const leftPose=await tearPose(tearing.page);assert.equal(leftPose.controls,5);assert.ok(leftPose.body.b<0);
+    assert.ok(Math.abs(leftPose.body.x-rightPose.body.x)<.01&&Math.abs(leftPose.body.y-rightPose.body.y)<.01,'Both tilts keep the same packet center');
+    assert.ok(leftPose.strip.a>0&&Math.abs(leftPose.strip.b)<.001&&leftPose.strip.x<rightPose.strip.x,'Left peel translates the strip without mirroring or rotating artwork');
+    assert.ok(leftPose.mouth.x<rightPose.mouth.x,'Mouth follows the left tilt');
+    await tearFrame(tearing.page,180);const leftImage=await screenshot(tearing.page,'tear-left-completion');await tearFrame(tearing.page,2200);
+    const released=await tearing.page.evaluate(()=>({created:preview.poseCreated,released:preview.poseReleased,stage:preview.store.stage(),drawRequests:preview.drawRequests}));
+    assert.equal(released.created,30);assert.equal(released.released,released.created);assert.equal(released.stage,'ring');assert.equal(released.drawRequests,0);
+    assert.deepEqual(tearing.errors,[]);results.push({case:'Real SDK left peel keeps artwork upright, suppresses stale first frame and frees all pose handles',rightPose,leftPose,released,screenshot:leftImage});await tearing.page.close();
+    for(const options of [{supported:false},{failTearTemplate:true},{failTearFlush:true}]) {
+      const fallback=await gamePage(browser,base,options),started=await beginTear(fallback.page);
+      assert.equal(started.ready,Boolean(options.failTearFlush));
+      await tearFrame(fallback.page,200);assert.equal(await fallback.page.evaluate(()=>preview.store.state.anim.finishMode),'fallback');
+      const waiting=await tearFrame(fallback.page,2199);assert.equal(waiting.stage,'tearFinish');await tearFrame(fallback.page,2200);
+      assert.equal(await fallback.page.evaluate(()=>preview.store.stage()),'ring');assert.equal(await fallback.page.evaluate(()=>preview.drawRequests),0);assert.deepEqual(fallback.errors,[]);
+      results.push({case:options.supported===false?'Unsupported PAG tear retains the same 2200ms Canvas extraction':options.failTearTemplate?'Missing tear asset retains the same 2200ms Canvas extraction':'Failed tear flush retains the same 2200ms Canvas extraction'});await fallback.page.close();
+    }
+
     const normal=await gamePage(browser,base,{dpr:3});
     let chosen=await selectRole(normal.page,1);
     assert.equal(chosen.ready,true);assert.equal(chosen.savedBeforePlayback,true);assert.equal(chosen.id,'wanderer');

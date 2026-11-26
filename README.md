@@ -207,3 +207,9 @@ node tools/sync-roles.cjs    # 同步到 game/data/roles.js
 4. 开发者工具**取消勾选**「不校验合法域名」,真机验证
 5. **小游戏账号要发布,需要「游戏」相关资质**(个人主体通常拿不到版号)。这一步在正式上线前绕不过去,建议先确认账号类型和资质路径
 6. 隐私指引、分享/海报能力按小游戏规范确认
+
+## 可选图片素材工具
+
+可在开发电脑使用配置的 TeleAPI 服务生成背景候选图：`npm run imagegen -- --help`。配置、三套提示词与用法见 [图片生成工具](tools/imagegen/README.md)。Key 保存在本机忽略文件中，现有小游戏与 Web 资源保持原样。
+
+撕开完成段的资源契约与替换说明见 [tools/pag/tear-README.md](tools/pag/tear-README.md)。Web 构建自动打包现有 tear.pag；用 `npm run pag:tear:pack` 可单独打包 AE 导出文件，用 `npm run pag:tear:build` 可重新生成内置撕开动画。

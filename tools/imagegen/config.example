@@ -1,0 +1,8 @@
+# Copy this file to .env.imagegen.local at the repository root.
+# Supply your provider key locally; never paste it into source code.
+TELEAPI_IMAGEGEN_API_KEY=
+TELEAPI_IMAGEGEN_ENDPOINT=https://ai01.teleapi.top/draw-api/v1/images/generations
+
+# Optional: use an existing local HTTPS proxy with Node 24.15+.
+# HTTPS_PROXY=http://127.0.0.1:7897
+# NODE_USE_ENV_PROXY=1
