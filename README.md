@@ -89,7 +89,8 @@ game/
 ├── game.json        小游戏配置(竖屏、超时)
 ├── package.json     {"type":"commonjs"}(小游戏没有 package.json 语义,只给 Node 测试用)
 ├── data/roles.js    由 tools/sync-roles.cjs 生成
-├── data/reveal-pag.js  已打包的 PAG 二进制数据,由 pag:build / pag:pack 生成
+├── data/reveal-pag.js  已随工程保存的揭晓 PAG 数据,由 pag:build / pag:pack 生成
+├── data/tear-pag.js    已随工程保存的撕包 PAG 数据,由 pag:tear:build / pag:tear:pack 生成
 ├── assets/          pack-*.jpg、bg-*.jpg 与 pag/reveal.pag 模板
 ├── vendor/pag/      固定版本 PAG SDK、压缩 WASM、许可证与校验清单
 └── js/

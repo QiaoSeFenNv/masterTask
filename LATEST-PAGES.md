@@ -48,7 +48,7 @@
 
 ## 在线体验与截图
 
-https://gmc-attempting-traveling-brands.trycloudflare.com
+当前有效的临时 HTTPS 地址见 [WEB.md](WEB.md)。旧的 gmc-attempting-traveling-brands 地址已经停用，不再用于最新版本验收。
 
 这是临时 HTTPS 链接，依赖本机 4173 静态预览与 tunnel 持续运行。只服务 web/dist，不暴露后端、.env 或数据库；体验记录保存在各自浏览器。重新打开/刷新链接即可加载最新页面，点击“重新体验”可从开包再测。
 

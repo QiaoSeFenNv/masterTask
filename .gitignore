@@ -11,6 +11,7 @@ data/
 !game/data/
 game/data/*
 !game/data/reveal-pag.js
+!game/data/tear-pag.js
 *.db
 *.db-journal
 *.db-wal

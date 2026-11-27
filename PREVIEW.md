@@ -26,8 +26,10 @@ PAG 构建、AE 替换与资源契约见 [PAG.md](PAG.md)。`test:pag` 输出角
 ## 3. 小游戏端
 
 ```bash
-node tools/sync-roles.cjs   # 改完 shared/roles.json 后同步到 game/data/roles.js
+node tools/sync-roles.cjs   # 首次克隆或改完 shared/roles.json 后同步到 game/data/roles.js
 ```
+
+揭晓与撕包的 PAG 数据模块、SDK 和图片已随代码提交，无需先运行 Web 构建补资源。替换撕包动画源文件后执行 `npm run pag:tear:pack`。
 
 微信开发者工具 → 导入项目 → `C:\Files\roles`，AppID 为 `wx9fd6453e42bc9d4e`，然后点编译。`project.config.json` 已设置 `compileType: game`、`miniprogramRoot: game/`。本地联调需在“详情 → 本地设置”勾选“不校验合法域名”。
 
@@ -51,6 +53,6 @@ node tools/sync-roles.cjs   # 改完 shared/roles.json 后同步到 game/data/ro
 
 ## 5. 浏览器体验预览
 
-运行 `npm run web:dev`,打开 http://127.0.0.1:4173。其他人可打开 [当前 HTTPS 分享链接](https://screenshot-fruits-tape-recommendation.trycloudflare.com) 体验。网页复用当前 Canvas 与 PAG 动画,无需微信登录和本地后端;演示记录保存在每位体验者自己的浏览器里。
+运行 `npm run web:dev`,打开 http://127.0.0.1:4173。其他人可打开 [WEB.md 中的当前 HTTPS 分享链接](WEB.md) 体验。网页复用当前 Canvas 与 PAG 动画,无需微信登录和本地后端;演示记录保存在每位体验者自己的浏览器里。
 
 使用鼠标或触摸完成选包、沿包口向右拖动、转盘点三张、选定角色与揭晓。页面顶部可复制链接或重新体验。运行 `npm run test:web` 验证真实浏览器流程,详见 [WEB.md](WEB.md)。临时分享地址依赖本机服务持续运行。

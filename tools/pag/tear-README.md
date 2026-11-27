@@ -10,7 +10,7 @@
 - `npm run test:pag`：真实 SDK/WebGL 的透明度、时间轴、系列图片替换、释放、后台恢复和失败回退验证。
 - `npm run web:dev`：构建并启动浏览器预览。
 
-首次克隆后，启动微信小游戏前先运行 `node tools/sync-roles.cjs` 和 `npm run pag:tear:pack`，生成角色与撕开资源模块。Web 构建与真实 PAG 验证会自动打包现有 tear.pag，因此新克隆不需要提交 Base64 数据模块。不要手改 game/data/tear-pag.js；揭晓的 reveal.pag、SDK 和角色插画不参与该构建。
+首次克隆后，启动微信小游戏前运行 `node tools/sync-roles.cjs` 生成角色模块。撕包的 `game/data/tear-pag.js` 与揭晓的数据模块一样随代码提交，小游戏无需依赖本机的忽略文件或先运行 Web 构建。替换 `tear.pag` 后必须执行 `npm run pag:tear:pack` 并一并提交源文件、模板及生成的数据模块。Web 构建与真实 PAG 验证仍会自动打包现有 tear.pag。不要手改 game/data/tear-pag.js；揭晓的 reveal.pag、SDK 和角色插画不参与该构建。
 
 以后换入 AE 设计稿时，覆盖 game/assets/pag/tear.pag，遵守 tools/pag/tear-template.json，然后运行 pag:tear:pack 与上述测试。图层不需要可编辑角色卡面；以下可编辑图片用于复用三套现有系列包面与色彩。PAG 的可编辑图片索引按图层第一次引用的顺序排列：
 
