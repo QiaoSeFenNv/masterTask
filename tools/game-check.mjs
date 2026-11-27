@@ -30,6 +30,7 @@ function makeCtx() {
     shadowColor: "",
     shadowBlur: 0,
     shadowOffsetY: 0,
+    transform(...values) { ops.push(["transform", ...values]); },
     setTransform(a, b, c, d, e, f) {
       ops.push(["setTransform", a, b, c, d, e, f]);
     },
@@ -751,28 +752,55 @@ const run = async () => {
     check("落定后过场结束", store.stage() === "", store.stage());
   }
 
-  /* 4. 已抽卡:渲染出角色名与任务 */
+  /* 4. 今日页只有可旋转的双面卡牌，没有记录控件。 */
   ops.length = 0;
   app.render();
   const drawnTexts = ops.filter((o) => o[0] === "fillText").map((o) => o[1]);
-  check("卡面画出角色名", drawnTexts.includes(store.state.draw.role.name), drawnTexts.slice(0, 8).join("|"));
+  check("今日页绘制卡牌与操作提示", ops.some(o=>o[0]==='drawImage') && drawnTexts.includes('拖动旋转 · 轻点翻面'));
   check("任务条数 3-4", store.state.draw.tasks.length >= 3 && store.state.draw.tasks.length <= 4, String(store.state.draw.tasks.length));
-  check("任务文本被绘制", store.state.draw.tasks.some((t) => drawnTexts.includes(t.text.slice(0, 20)) || drawnTexts.some((x) => x && t.text.startsWith(x))), "n/a");
+  const todayZones = view.renderToday(vp,store.state).zones;
+  check("今日页仅有卡牌命中区", todayZones.length===1 && todayZones[0].id==='today-card');
+  check("今日页没有任务、手记或重抽入口", !todayZones.some(z=>['task','note','redraw'].includes(z.id)));
+  check("今日页不滚动", store.state.scrollMax===0);
 
-  /* 5. 命中判定:点第一张任务卡 */
-  const task = store.state.draw.tasks[0];
-  const tRect = layout.todayTaskRect(0);
-  tRect.y += layout.contentTop(vp);
+  /* 5. 真实触摸路由：双轴旋转、完整背面、点击返回正面、取消手势。 */
+  const todayCard = require(resolve(ROOT,'game/js/today-card.js'));
+  const clock = require(resolve(ROOT,'game/js/animation.js'));
+  const cr = todayCard.rect(vp), now = Date.now()+1000;
+  const records = JSON.stringify(store.state.draw);
+  const event = (x,y)=>({touches:[{clientX:x,clientY:y}],changedTouches:[{clientX:x,clientY:y}]});
+  clock.withTime(now,()=>{
+    app.render(now);
+    app.onTouchStart(event(cr.x+30,cr.y+cr.h/2));
+    app.onTouchMove(event(cr.x+cr.w*.85,cr.y+cr.h/2+45));
+    app.render(now);
+    const pose=todayCard.snapshot();
+    check("拖动今日卡同时产生水平透视和垂直倾斜", pose.yaw>1.5 && pose.pitch<0 && pose.dragging);
+    check("旋转用纹理网格绘制", ops.some(o=>o[0]==='transform'));
+    app.onTouchEnd(event(cr.x+cr.w*.85,cr.y+cr.h/2+45));
+  });
+  clock.withTime(now+todayCard.TURN_MS+1,()=>{
+    app.render(now+todayCard.TURN_MS+1);
+    check("松手停在背面，回正后描述便于阅读", todayCard.snapshot().back && todayCard.snapshot().pitch===0 && !todayCard.snapshot().busy);
+    app.onTouchStart(event(cr.x+cr.w/2,cr.y+cr.h/2));
+    app.onTouchEnd(event(cr.x+cr.w/2,cr.y+cr.h/2));
+  });
+  clock.withTime(now+todayCard.TURN_MS*2+2,()=>{
+    app.render(now+todayCard.TURN_MS*2+2);
+    check("轻点背面可翻回正面", !todayCard.snapshot().back && !todayCard.snapshot().busy);
+    app.onTouchStart(event(cr.x+cr.w/2,cr.y+cr.h/2));
+    app.onTouchMove(event(cr.x+cr.w/2+20,cr.y+cr.h/2+30));
+    app.onTouchEnd({canceled:true});
+    check("取消触摸释放卡牌手势", !todayCard.snapshot().dragging);
+  });
+  check("卡牌操作不修改抽卡、任务或手记记录", JSON.stringify(store.state.draw)===records);
 
-  const before = task.done;
-  app.dispatch(tRect.x + 30, tRect.y + tRect.h / 2);
-  await sleep(400);
-  check("点任务卡能切换勾选", task.done === !before, "before=" + before + " after=" + task.done);
-
-  /* 6. 再点回来,避免污染 */
-  app.dispatch(tRect.x + 30, tRect.y + tRect.h / 2);
-  await sleep(400);
-  check("再点可还原", task.done === before, "done=" + task.done);
+  /* 6. 保留服务端任务接口的回归检查，不在卡牌上提供记录控件。 */
+  const task=store.state.draw.tasks[0], before=task.done;
+  await store.toggleTask(task.id);
+  check("任务接口仍可切换勾选", task.done===!before);
+  await store.toggleTask(task.id);
+  check("任务接口再调可还原", task.done===before);
 
   /* 7. tab 切换 */
   const tabs = view.tabbarRects(vp);
@@ -789,6 +817,52 @@ const run = async () => {
   check("切 tab 后内容从 0.96 淡入且导航仍可点击",
     ops.some((o) => o[0] === "scale" && o[1] === 0.96) &&
     ops.some((o) => o[0] === "fillText" && o[1] === "日历" && o[4] === 1));
+
+  /* 7b. 卡牌日历：无任务统计，点日期放大，可旋转并关闭回原格子。 */
+  const historyCard=require(resolve(ROOT,'game/js/calendar-card.js'));
+  const calendarAt=Date.now()+1000;
+  const calendarBefore=JSON.stringify(store.state.calendar.cells);
+  const drawBefore=JSON.stringify(store.state.draw);
+  clock.withTime(calendarAt,()=>{
+    ops.length=0;app.render(calendarAt);
+    const texts=ops.filter(o=>o[0]==='fillText').map(o=>o[1]);
+    check('日历不显示连续天数和任务统计',!texts.some(t=>/连续|任务|已完成/.test(t)));
+    const monthZones=view.renderCalendar(vp,store.state).zones;
+    const dayZone=monthZones.find(z=>z.id==='day');
+    check('有卡的日期是可查看的竖版小卡',Boolean(dayZone) && Math.abs(dayZone.sourceRect.h/dayZone.sourceRect.w-1.5)<.001);
+    check('空白日期没有查看命中区',monthZones.filter(z=>z.id==='day').every(z=>Boolean(z.entry)));
+    if(!dayZone) throw Error('Expected a recorded calendar day');
+    app.dispatch(dayZone.rect.x+dayZone.rect.w/2,dayZone.rect.y+dayZone.rect.h/2);
+    app.render(calendarAt);
+    check('点日期进入独立卡牌查看',historyCard.active() && !store.state.selected && historyCard.snapshot().date===dayZone.date);
+    check('放大开始时保留原日期卡位置',historyCard.render(vp).find(z=>z.id==='calendar-card').rect.w<dayZone.sourceRect.w+25);
+  });
+  clock.withTime(calendarAt+historyCard.OPEN_MS+1,()=>{
+    app.render(calendarAt+historyCard.OPEN_MS+1);
+    const r=historyCard.rect(vp),cx=r.x+r.w/2,cy=r.y+r.h/2;
+    check('放大完成后停止过渡帧',!historyCard.busy(vp));
+    app.onTouchStart(event(cx-r.w*.30,cy));
+    app.onTouchMove(event(cx+r.w*.35,cy+30));
+    check('历史卡支持双轴旋转',historyCard.snapshot().yaw>1.5 && historyCard.snapshot().pitch<0);
+    app.onTouchEnd(event(cx+r.w*.35,cy+30));
+  });
+  clock.withTime(calendarAt+historyCard.OPEN_MS+todayCard.TURN_MS+2,()=>{
+    ops.length=0;app.render(calendarAt+historyCard.OPEN_MS+todayCard.TURN_MS+2);
+    check('历史卡背面显示角色描述而非任务记录',historyCard.snapshot().back && ops.some(o=>o[0]==='fillText' && o[1]==='角色描述'));
+    const close=historyCard.render(vp).find(z=>z.id==='calendar-card-close').rect;
+    app.dispatch(close.x+close.w/2,close.y+close.h/2);
+    check('关闭启动缩回动画',historyCard.snapshot().closing && historyCard.busy(vp));
+  });
+  clock.withTime(calendarAt+historyCard.OPEN_MS+todayCard.TURN_MS+historyCard.CLOSE_MS+3,()=>{
+    app.render(calendarAt+historyCard.OPEN_MS+todayCard.TURN_MS+historyCard.CLOSE_MS+3);
+    check('缩回完成释放历史卡和动作',!historyCard.active() && !historyCard.snapshot().busy);
+  });
+  check('回看不会修改今日抽卡或历史日期',JSON.stringify(store.state.draw)===drawBefore && JSON.stringify(store.state.calendar.cells)===calendarBefore);
+  const smallVp={...vp,height:620};
+  const sixRows=Array.from({length:42},(_,i)=>({type:'day',day:i%28+1,date:'2026-11-'+String(i%28+1).padStart(2,'0'),entry:store.state.calendar.cells.find(c=>c.entry).entry}));
+  const smallState={...store.state,calendar:{...store.state.calendar,cells:sixRows},scroll:180};
+  const smallGrid=view.renderCalendar(smallVp,smallState);
+  check('六行月份在小屏可滚动且日期命中不穿过导航',smallGrid.contentH>layout.contentH(smallVp) && smallGrid.zones.filter(z=>z.id==='day').every(z=>z.rect.y>=layout.contentTop(smallVp)+layout.calendarGridTop()-4 && z.rect.y+z.rect.h<=layout.contentBottom(smallVp)-32));
 
   /* 8. 上一月 */
   const m0 = store.state.calendar.month;
@@ -838,13 +912,13 @@ const run = async () => {
     const rb = layout.redrawButtonRect(tasksN);
     rb.y += layout.contentTop(vp) - store.state.scroll;
 
-    check("按钮文字画出来了", ops.some((o) => o[0] === "fillText" && o[1] === "重新抽一次"), "");
+    check("极简今日页不显示重新抽卡按钮", !ops.some((o) => o[0] === "fillText" && o[1] === "重新抽一次"), "");
     const foot = layout.todayFootRect(tasksN);
     check("按钮排在页脚下方", rb.y > layout.contentTop(vp) + foot.y + foot.h, rb.y + " vs " + (layout.contentTop(vp) + foot.y + foot.h));
     check("按钮内容高度把按钮算进去了", layout.todayContentHWithRedraw(tasksN, true) > layout.todayContentH(tasksN), "");
     check("不开重抽时高度不变", layout.todayContentHWithRedraw(tasksN, false) === layout.todayContentH(tasksN), "");
 
-    app.dispatch(rb.x + rb.w / 2, rb.y + rb.h / 2);
+    await store.redrawToday();
     await sleep(1500);
     check("重抽后回到未落定", !store.state.draw, "draw=" + Boolean(store.state.draw));
     check("重抽后重新摊开十张", store.state.offer.length === 10, String(store.state.offer.length));

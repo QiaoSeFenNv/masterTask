@@ -215,6 +215,7 @@ async function zone(page,id) {
     }
     let list;
     if(id.startsWith('tab:'))list=view.tabbarRects(vp).map(item=>({id:'tab:'+item.id,rect:item}));
+    else if(s.tab==='calendar' && requireGame('js/calendar-card.js').active())list=requireGame('js/calendar-card.js').render(vp);
     else if(s.selected)list=view.renderSheet(vp,s);
     else list=(s.tab==='today'?view.renderToday(vp,s):s.tab==='calendar'?view.renderCalendar(vp,s):view.renderCollection(vp,s)).zones;
     const target=list.find(item=>id==='owned'?item.id==='card'&&item.card.owned:item.id===id);
@@ -225,7 +226,7 @@ async function zone(page,id) {
 async function clickZone(page,id) {
   for(let i=0;i<10;i++) {
     const p=await zone(page,id),g=await geometry(page);
-    if(id.startsWith('tab:')||id==='sheet-close'||id==='prev-month'||id==='next-month'||(p.y>g.top+24&&p.y<g.bottom-24))return page.mouse.click((await point(page,p.x,p.y)).x,(await point(page,p.x,p.y)).y);
+    if(id.startsWith('calendar-card-')||id.startsWith('tab:')||id==='sheet-close'||id==='prev-month'||id==='next-month'||(p.y>g.top+24&&p.y<g.bottom-24))return page.mouse.click((await point(page,p.x,p.y)).x,(await point(page,p.x,p.y)).y);
     const at=await point(page,187.5,(g.top+g.bottom)/2);
     await page.mouse.move(at.x,at.y);await page.mouse.wheel(0,(p.y-(g.top+g.bottom)/2)*g.width/375);await page.clock.runFor(32);
   }
@@ -264,16 +265,97 @@ async function main() {
     });
     assert.ok(decoded.every(cue=>cue.duration>0&&cue.duration<0.3&&cue.channels===1));
     results.push({case:'Three short cues decode in Chromium; gesture gate, tear, three flips and one settle verified',decoded});
-    await clickZone(desktop.page,'task');await desktop.page.clock.runFor(32);assert.equal((await state(desktop.page)).draw.doneCount,1);
-    await clickZone(desktop.page,'note');await desktop.page.locator('#note-input').fill('网页体验：开包和揭晓都能操作。');
-    await desktop.page.getByRole('button',{name:'保存',exact:true}).click();await desktop.page.clock.runFor(32);
-    await desktop.page.reload({waitUntil:'networkidle'});await desktop.page.clock.runFor(32);
-    const restored=await state(desktop.page);assert.equal(restored.draw.doneCount,1);assert.equal(restored.draw.noteDraft,'网页体验：开包和揭晓都能操作。');
-    results.push({case:'Mouse wheel, task check-in and note dialog work; local records survive reload'});
+    await desktop.page.clock.runFor(500);
+    const todayBefore=(await state(desktop.page)).draw;
+    const cardRect=await desktop.page.evaluate(()=>rolesPreview.requireGame('js/today-card.js').rect(rolesPreview.requireGame('js/env.js').viewport()));
+    const cardFrom=await point(desktop.page,cardRect.x+25,cardRect.y+cardRect.h/2);
+    const cardTo=await point(desktop.page,cardRect.x+cardRect.w*.88,cardRect.y+cardRect.h/2+40);
+    await drag(desktop.page,cardFrom,cardTo);
+    await desktop.page.clock.runFor(450);
+    assert.ok(await desktop.page.evaluate(()=>rolesPreview.requireGame('js/today-card.js').snapshot().back));
+    const back=await shot(desktop.page,'today-card-back');
+    await clickZone(desktop.page,'today-card');await desktop.page.clock.runFor(450);
+    assert.equal(await desktop.page.evaluate(()=>rolesPreview.requireGame('js/today-card.js').snapshot().back),false);
+    const front=await shot(desktop.page,'today-card-front');
+    const typography=await desktop.page.evaluate(()=>{
+      const {requireGame}=rolesPreview,card=requireGame('js/today-card.js'),draw=requireGame('js/draw.js');
+      const animation=requireGame('js/animation.js'),vp=requireGame('js/env.js').viewport(),s=rolesPreview.game.store.state;
+      const original=draw.withCanvas,report=[];let samples=[];
+      draw.withCanvas=function(target,callback){return original(target,ctx=>{
+        const fill=ctx.fillText;
+        ctx.fillText=function(text,x,y){
+          const width=this.measureText(text).width;
+          samples.push({text:String(text),x,y,width,align:this.textAlign,color:this.fillStyle});
+          return fill.apply(this,arguments);
+        };
+        try{return callback(ctx);}finally{ctx.fillText=fill;}
+      });};
+      try {
+        for(const role of requireGame('data/roles.js').roles) {
+          const state={...s,draw:{...s.draw,role}};samples=[];
+          card.render(vp,state);card.flip();
+          animation.withTime(Date.now()+card.TURN_MS+1,()=>card.render(vp,state));
+          report.push({role:role.id,complete:samples.filter(t=>t.color==='#403a32').map(t=>t.text).join('')===role.intro,
+            bounds:samples.every(t=>{const left=t.align==='center'?t.x-t.width/2:t.x;
+              return left>=10 && left+t.width<=270 && t.y>=10 && t.y<=400;})});
+        }
+      }finally{draw.withCanvas=original;card.render(vp,s);rolesPreview.game.render();}
+      return report;
+    });
+    assert.equal(typography.length,20);
+    assert.ok(typography.every(r=>r.complete&&r.bounds),'All 20 roles have complete readable descriptions and fitting card text');
+    results.push({case:'All 20 role fronts and backs retain the original card content and fit without truncated descriptions',typography});
+    await desktop.page.locator('#game').focus();await desktop.page.keyboard.press('Space');await desktop.page.clock.runFor(450);
+    assert.ok(await desktop.page.evaluate(()=>rolesPreview.requireGame('js/today-card.js').snapshot().back));
+    await desktop.page.keyboard.press('Enter');await desktop.page.clock.runFor(450);
+    assert.equal(await desktop.page.evaluate(()=>rolesPreview.requireGame('js/today-card.js').snapshot().back),false);
+
+    const todayUI=await desktop.page.evaluate(()=>{
+      const {requireGame}=rolesPreview,s=rolesPreview.game.store.state;
+      return {zones:requireGame('js/render.js').renderToday(requireGame('js/env.js').viewport(),s).zones.map(z=>z.id),scrollMax:s.scrollMax};
+    });
+    assert.deepEqual(todayUI,{zones:['today-card'],scrollMax:0});
+    assert.deepEqual((await state(desktop.page)).draw,todayBefore,'Rotation and flipping never record tasks or notes');
+    await desktop.page.reload({waitUntil:'networkidle'});await desktop.page.clock.runFor(500);
+    const restored=await state(desktop.page);assert.deepEqual(restored.draw,todayBefore);
+    assert.equal(await desktop.page.evaluate(()=>rolesPreview.requireGame('js/today-card.js').snapshot().back),false);
+    results.push({case:'Read-only role card rotates in 3D, flips to description and back, and preserves draw records on reload',front,back});
     await clickZone(desktop.page,'tab:calendar');await desktop.page.clock.runFor(32);
     assert.ok((await entryScales(desktop.page)).some(([x,y])=>x>=0.96&&x<1&&x===y), 'Tab content animates while month navigation stays interactive');
-    assert.ok((await state(desktop.page)).calendar.cells.some(cell=>cell.entry&&cell.entry.tasksDone===1));
+    assert.ok((await state(desktop.page)).calendar.cells.some(cell=>cell.entry&&cell.entry.tasksDone===todayBefore.doneCount));
+    await desktop.page.clock.runFor(300);
+    const calendarShot=await shot(desktop.page,'calendar-card-month');
+    const historical=(await state(desktop.page)).calendar.cells.find(cell=>cell.entry);
+    await clickZone(desktop.page,'day');await desktop.page.clock.runFor(250);
+    const historyPose=await desktop.page.evaluate(()=>rolesPreview.requireGame('js/calendar-card.js').snapshot());
+    assert.equal(historyPose.date,historical.date);assert.equal(historyPose.roleId,historical.entry.roleId);
+    assert.equal((await state(desktop.page)).selected,null,'History card does not use the old task summary sheet');
+    const historyFront=await shot(desktop.page,'calendar-card-front');
+    const historyRect=await desktop.page.evaluate(()=>rolesPreview.requireGame('js/calendar-card.js').rect(rolesPreview.requireGame('js/env.js').viewport()));
+    await drag(desktop.page,await point(desktop.page,historyRect.x+25,historyRect.y+historyRect.h/2),
+      await point(desktop.page,historyRect.x+historyRect.w*.88,historyRect.y+historyRect.h/2+35));
+    await desktop.page.clock.runFor(450);
+    assert.ok(await desktop.page.evaluate(()=>rolesPreview.requireGame('js/calendar-card.js').snapshot().back));
+    const historyBack=await shot(desktop.page,'calendar-card-back');
+    await desktop.page.locator('#game').focus();await desktop.page.keyboard.press('Escape');await desktop.page.clock.runFor(220);
+    assert.equal(await desktop.page.evaluate(()=>rolesPreview.requireGame('js/calendar-card.js').active()),false);
+    assert.deepEqual((await state(desktop.page)).draw,todayBefore);
+    await clickZone(desktop.page,'day');await desktop.page.clock.runFor(50);
+    await clickZone(desktop.page,'calendar-card-close');await desktop.page.clock.runFor(220);
+    assert.equal(await desktop.page.evaluate(()=>rolesPreview.requireGame('js/calendar-card.js').active()),false,'Can dismiss while the opening animation is running');
+    results.push({case:'Card calendar opens the original role, rotates to its full description, closes to the source day, and preserves records',calendarShot,historyFront,historyBack});
+    await clickZone(desktop.page,'day');await desktop.page.clock.runFor(250);
+    await clickZone(desktop.page,'tab:today');await desktop.page.clock.runFor(250);
+    assert.equal(await desktop.page.evaluate(()=>rolesPreview.requireGame('js/calendar-card.js').active()),false,'Leaving calendar releases its focused card');
+    assert.equal(await desktop.page.evaluate(()=>rolesPreview.requireGame('js/today-card.js').snapshot().back),false,'History rotation does not change the today card pose');
+    await clickZone(desktop.page,'tab:calendar');await desktop.page.clock.runFor(250);
     const month=(await state(desktop.page)).calendar.month;await clickZone(desktop.page,'prev-month');await desktop.page.clock.runFor(32);assert.notEqual((await state(desktop.page)).calendar.month,month);
+    await desktop.page.evaluate(()=>rolesPreview.game.store.loadCalendar(2026,1));await desktop.page.clock.runFor(250);
+    await clickZone(desktop.page,'prev-month');await desktop.page.clock.runFor(250);
+    assert.equal((await state(desktop.page)).calendar.year,2025);assert.equal((await state(desktop.page)).calendar.month,12);
+    await clickZone(desktop.page,'next-month');await desktop.page.clock.runFor(250);
+    assert.equal((await state(desktop.page)).calendar.year,2026);assert.equal((await state(desktop.page)).calendar.month,1);
+    results.push({case:'Calendar navigation crosses year boundaries and leaving history releases its independent viewer'});
     await clickZone(desktop.page,'tab:collection');await desktop.page.clock.runFor(32);
     assert.equal((await state(desktop.page)).collection.cards.length,20);
     await clickZone(desktop.page,'owned');await desktop.page.clock.runFor(32);assert.ok((await state(desktop.page)).selected);
@@ -283,13 +365,63 @@ async function main() {
     const mobile=await open(browser,base,true);
     assert.equal((await state(mobile.page)).draw,null);
     await chooseAndTear(mobile,'mobile','up');await selectAndReveal(mobile,'mobile',true,true);
+    await mobile.page.clock.runFor(500);
+    const mobileCard=await mobile.page.evaluate(()=>rolesPreview.requireGame('js/today-card.js').rect(rolesPreview.requireGame('js/env.js').viewport()));
+    await drag(mobile.page,await point(mobile.page,mobileCard.x+25,mobileCard.y+mobileCard.h/2),
+      await point(mobile.page,mobileCard.x+mobileCard.w*.88,mobileCard.y+mobileCard.h/2+35),mobile.touch);
+    await mobile.page.clock.runFor(450);
+    assert.ok(await mobile.page.evaluate(()=>rolesPreview.requireGame('js/today-card.js').snapshot().back));
+    await mobile.page.emulateMedia({reducedMotion:'reduce'});
+    const mobileCenter=await point(mobile.page,187.5,mobileCard.y+mobileCard.h/2);
+    await tap(mobile.page,mobileCenter,mobile.touch);await mobile.page.clock.runFor(32);
+    assert.equal(await mobile.page.evaluate(()=>rolesPreview.requireGame('js/today-card.js').snapshot().back),false);
+    assert.equal(await mobile.page.evaluate(()=>rolesPreview.requireGame('js/today-card.js').snapshot().busy),false);
+    results.push({case:'Touch rotates the daily card; reduced motion flips instantly to the final readable side'});
     await mobile.page.setViewportSize({width:430,height:920});await waitForResize(mobile.page,430);
     assert.equal(await mobile.page.evaluate(()=>rolesPreview.requireGame('js/env.js').size().width),430);
     assert.ok((await state(mobile.page)).draw);
     await mobile.page.getByRole('button',{name:'重新体验',exact:true}).click();await mobile.page.waitForLoadState('networkidle');
     assert.equal((await state(mobile.page)).stage,'pack');assert.equal((await state(mobile.page)).draw,null);
     assert.deepEqual(mobile.errors,[]);results.push({case:'Mobile touch, resize, independent visitor data and restart work'});await mobile.context.close();
-    const small=await open(browser,base,true,false,true);await chooseAndTear(small,'small-phone','down');await selectAndReveal(small,'small-phone',true,true);assert.deepEqual(small.errors,[]);await small.context.close();
+    const small=await open(browser,base,true,false,true);
+    await chooseAndTear(small,'small-phone','down');await selectAndReveal(small,'small-phone',true,true);
+    await tap(small.page,await point(small.page,187.5,(await geometry(small.page)).bottom+20),small.touch);
+    await small.page.clock.runFor(300);
+    const fixture=await small.page.evaluate(()=>{
+      const {requireGame}=rolesPreview,s=rolesPreview.game.store.state,pool=requireGame('data/roles.js').roles;
+      // In-memory display fixture only: no localStorage or API writes.
+      s.tab='calendar';s.calendar={year:2026,month:11,streak:99,loading:false,error:'',cells:
+        Array.from({length:42},(_,i)=>{
+          if(i<6 || i>=36)return {type:'blank'};
+          const day=i-5,role=pool[(day-1)%pool.length],date='2026-11-'+String(day).padStart(2,'0');
+          return {type:'day',day,date,isToday:day===24,future:false,entry:{date,roleId:role.id,roleName:role.name,emoji:role.emoji,gradient:role.gradient,tasksDone:0,tasksTotal:3}};
+        })};s.scroll=0;rolesPreview.game.render();return {draw:s.draw};
+    });
+    await small.page.clock.runFor(300);
+    assert.ok((await state(small.page)).scrollMax>0,'Six calendar rows scroll on a short phone');
+    const smallGeometry=await geometry(small.page);
+    await drag(small.page,await point(small.page,187.5,smallGeometry.bottom-55),
+      await point(small.page,187.5,smallGeometry.top+90),small.touch);await small.page.clock.runFor(50);
+    assert.ok((await state(small.page)).scroll>0);
+    const visibleDay=await small.page.evaluate(()=>{
+      const {requireGame}=rolesPreview,vp=requireGame('js/env.js').viewport(),s=rolesPreview.game.store.state;
+      const zones=requireGame('js/render.js').renderCalendar(vp,s).zones.filter(z=>z.id==='day');
+      const z=zones[zones.length-1];return {x:z.rect.x+z.rect.w/2,y:z.rect.y+z.rect.h/2,date:z.date};
+    });
+    await tap(small.page,await point(small.page,visibleDay.x,visibleDay.y),small.touch);await small.page.clock.runFor(250);
+    assert.equal(await small.page.evaluate(()=>rolesPreview.requireGame('js/calendar-card.js').snapshot().date),visibleDay.date);
+    await small.page.emulateMedia({reducedMotion:'reduce'});
+    const historyOnPhone=await small.page.evaluate(()=>rolesPreview.requireGame('js/calendar-card.js').rect(rolesPreview.requireGame('js/env.js').viewport()));
+    await tap(small.page,await point(small.page,187.5,historyOnPhone.y+historyOnPhone.h/2),small.touch);await small.page.clock.runFor(32);
+    assert.ok(await small.page.evaluate(()=>rolesPreview.requireGame('js/calendar-card.js').snapshot().back));
+    const smallCard=await shot(small.page,'calendar-small-phone');
+    const phoneClose=await zone(small.page,'calendar-card-close');
+    await tap(small.page,await point(small.page,phoneClose.x,phoneClose.y),small.touch);await small.page.clock.runFor(32);
+    assert.equal(await small.page.evaluate(()=>rolesPreview.requireGame('js/calendar-card.js').active()),false);
+    assert.deepEqual((await state(small.page)).draw,fixture.draw);
+    results.push({case:'Short phone scrolls six calendar rows, opens lower dates by touch, and respects reduced motion',fixture:'In-memory display dates only',smallCard});
+    assert.deepEqual(small.errors,[]);await small.context.close();
+
     const fallback=await open(browser,base,false,true);await chooseAndTear(fallback,'fallback','diagonal');await selectAndReveal(fallback,'fallback',false,true);assert.deepEqual(fallback.errors,[]);await fallback.context.close();
     const rightSwipe=await open(browser,base);await chooseAndTear(rightSwipe,'right-swipe','right');assert.deepEqual(rightSwipe.errors,[]);await rightSwipe.context.close();
     await fs.writeFile(path.join(ARTIFACTS,'verification.json'),JSON.stringify({verifiedAt:new Date().toISOString(),environment:'Chromium, actual mouse and CDP touch input; deterministic timeline for screenshots',passed:results.length,results},null,2)+'\n');

@@ -8,6 +8,8 @@ var layout = require("./layout.js");
 var animation = require("./animation.js");
 var theme = require("./theme.js");
 var env = require("./env.js");
+var todayCard = require("./today-card.js");
+var cardface = require("./cardface.js");
 
 var W = layout.W;
 var PAD = layout.PAD;
@@ -204,188 +206,9 @@ function renderIdle(vp, state) {
   return { zones: zones, contentH: layout.idleContentH() };
 }
 
-/** 已抽卡:卡面 + 任务 + 手记 + 页脚 */
-function renderDrawn(vp, state, y) {
-  var zones = [];
-  var d = state.draw;
-  var role = d.role;
-
-  /* 卡面 */
-  var card = layout.todayCardRect();
-  card.y = y;
-
-  draw.clipRoundRect(card.x, card.y, card.w, card.h, card.r);
-  gradientFill(card, role.gradient || [theme.packTop, theme.packBottom], 150, 0);
-  draw.getCtx().globalAlpha *= 0.16;
-  gradientFill(
-    { x: card.x, y: card.y, w: card.w, h: card.h * 0.5 },
-    ["#ffffff", role.gradient ? role.gradient[0] : theme.packTop],
-    180,
-    0,
-  );
-  draw.restore();
-
-  /* 角标 */
-  var cn = 26;
-  stroke(
-    { x: card.x + 14, y: card.y + 14, w: cn, h: cn },
-    "rgba(255,255,255,0.32)",
-    2,
-    1,
-  );
-  stroke(
-    { x: card.x + card.w - 14 - cn, y: card.y + card.h - 14 - cn, w: cn, h: cn },
-    "rgba(255,255,255,0.32)",
-    2,
-    1,
-  );
-
-  draw.text(role.emoji || "🎴", card.x + card.w / 2, card.y + 78, {
-    size: 58,
-    align: "center",
-  });
-  draw.text(role.name || "", card.x + card.w / 2, card.y + 136, {
-    size: 40,
-    weight: "600",
-    serif: true,
-    color: "#ffffff",
-    align: "center",
-    shadow: { color: "rgba(0,0,0,0.35)", blur: 10, y: 2 },
-  });
-  draw.fillRect(card.x + card.w / 2 - 20, card.y + 152, 40, 1, role.accent || theme.gold);
-
-  zones.push({ id: "card", rect: card, radius: card.r });
-
-  /* 任务 */
-  d.tasks.forEach(function (t, i) {
-    var r = layout.todayTaskRect(i);
-    r.y = y + r.y;
-    fill(r, theme.softFill, r.r);
-    stroke(r, theme.softBorder, r.r, 1);
-
-    var cx = r.x + 20;
-    var cy = r.y + r.h / 2;
-    draw.circle(
-      cx,
-      cy,
-      8,
-      t.done ? theme.gold : "transparent",
-      t.done ? theme.gold : theme.checkOff,
-      1.5,
-    );
-    if (t.done) {
-      draw.text("✓", cx, cy + 4, { size: 11, color: theme.onGold, align: "center", weight: "700" });
-    }
-
-    var textColor = t.done ? theme.muted : theme.taskText;
-    draw.wrapText(t.text, r.x + 40, r.y + 24, r.w - 56, 17, {
-      size: 12.5,
-      color: textColor,
-      maxLines: 2,
-    });
-
-    if (t.tag) {
-      var tw = draw.measure(t.tag, 9.5) + 12;
-      draw.roundRect(r.x + r.w - tw - 12, r.y + 9, tw, 15, 4);
-      draw.getCtx().fillStyle = theme.tagFill;
-      draw.getCtx().fill();
-      draw.text(t.tag, r.x + r.w - tw / 2 - 12, r.y + 20, {
-        size: 9.5,
-        color: theme.purple,
-        align: "center",
-      });
-    }
-
-    var noteW = r.w - 56;
-    if (t.note) {
-      draw.wrapText("「" + t.note + "」", r.x + 40, r.y + 46, noteW, 14, {
-        size: 10.5,
-        color: theme.faint,
-        maxLines: 1,
-      });
-    }
-
-    zones.push({ id: "task", taskId: t.id, rect: r, radius: r.r });
-  });
-
-  /* 手记 */
-  var note = layout.todayNoteRect(d.tasks.length);
-  note.y = y + note.y;
-  fill(note, theme.softFill, note.r);
-  stroke(note, theme.softBorder, note.r, 1);
-
-  draw.text("今日手记", note.x + 16, note.y + 26, {
-    size: 11.5,
-    color: theme.muted,
-  });
-
-  var draft = state.noteDraft || "";
-
-  // 右上角:胶囊按钮,点一下调系统输入
-  var editRect = { x: note.x + note.w - 78, y: note.y + 12, w: 62, h: 24, r: 12 };
-  fill(editRect, theme.editFill, editRect.r);
-  draw.text(draft ? "编辑" : "写一句", editRect.x + editRect.w / 2, editRect.y + 16, {
-    size: 11,
-    color: theme.purple,
-    align: "center",
-  });
-
-  if (draft) {
-    draw.wrapText(draft, note.x + 16, note.y + 54, note.w - 32, 19, {
-      size: 12.5,
-      color: theme.noteText,
-      maxLines: 4,
-    });
-  } else {
-    draw.text("还没有写。", note.x + 16, note.y + 54, {
-      size: 12.5,
-      color: theme.faint,
-    });
-    draw.text("记一句今天最想记住的话。", note.x + 16, note.y + 76, {
-      size: 12.5,
-      color: theme.faint,
-    });
-  }
-
-  zones.push({ id: "note", rect: note, radius: note.r });
-
-  /* 页脚 */
-  var foot = layout.todayFootRect(d.tasks.length);
-  foot.y = y + foot.y;
-  draw.fillRect(foot.x, foot.y, foot.w, 1, theme.line);
-  draw.text(
-    d.doneCount + " / " + d.tasks.length + " 已完成",
-    PAD,
-    foot.y + 20,
-    { size: 12, color: theme.muted },
-  );
-  draw.text(
-    (d.role.tagline || "") + " · " + layout.monthDay(d.date),
-    W - PAD,
-    foot.y + 20,
-    { size: 12, color: theme.faint, align: "right" },
-  );
-
-  /* 重新抽卡：只有服务端放开时（测试环境）才出现 */
-  if (state.canRedraw) {
-    // 和 note / foot 一样，布局给的是相对内容顶部的坐标，这里加上 y
-    var rb = layout.redrawButtonRect(d.tasks.length);
-    rb.y = y + rb.y;
-    fill(rb, theme.idleBtn, rb.r);
-    stroke(rb, theme.frame, rb.r, 1);
-    draw.text(state.shifting ? "重新发牌中…" : "重新抽一次", rb.x + rb.w / 2, rb.y + rb.h / 2 + 4, {
-      size: 12.5,
-      color: theme.gold,
-      align: "center",
-    });
-    if (!state.shifting) zones.push({ id: "redraw", rect: rb, radius: rb.r });
-    return {
-      zones: zones,
-      contentH: layout.todayContentHWithRedraw(d.tasks.length, true),
-    };
-  }
-
-  return { zones: zones, contentH: layout.todayContentH(d.tasks.length) };
+/** 已抽卡：以可旋转的双面角色卡作为今日页主体。 */
+function renderDrawn(vp, state) {
+  return todayCard.render(vp, state);
 }
 
 /* ==================== 日历 ==================== */
@@ -393,97 +216,56 @@ function renderDrawn(vp, state, y) {
 var WEEK = ["一", "二", "三", "四", "五", "六", "日"];
 
 function renderCalendar(vp, state) {
-  var zones = [];
-  var cal = state.calendar;
-  var top = layout.contentTop(vp);
-
-  if (cal.loading) {
-    draw.text("正在翻日历…", W / 2, top + 60, {
-      size: 14,
-      color: theme.muted,
-      align: "center",
-    });
-    return { zones: zones, contentH: layout.contentH(vp) };
+  var zones=[],cal=state.calendar,top=layout.contentTop(vp);
+  if(cal.loading || cal.error) {
+    draw.text(cal.error?'日历加载失败':'正在翻日历…',W/2,top+60,
+      {size:14,color:theme.bodyBright,align:'center'});
+    if(cal.error) zones.push({id:'retry-calendar',rect:{x:PAD,y:top+30,w:layout.innerW(),h:70}});
+    return {zones:zones,contentH:layout.contentH(vp)};
   }
-  if (cal.error) {
-    draw.text("日历加载失败", W / 2, top + 60, {
-      size: 14,
-      color: theme.body,
-      align: "center",
-    });
-    return { zones: zones, contentH: layout.contentH(vp) };
-  }
-
-  var navY = top + 6;
-  var prev = { x: PAD, y: navY, w: 34, h: 30, r: 15 };
-  var next = { x: W - PAD - 34, y: navY, w: 34, h: 30, r: 15 };
-  fill(prev, theme.navFill, prev.r);
-  fill(next, theme.navFill, next.r);
-  draw.text("‹", prev.x + 17, navY + 21, {
-    size: 18,
-    color: theme.body,
-    align: "center",
+  var navY=top+2;
+  var prev={x:PAD,y:navY,w:38,h:38,r:19};
+  var next={x:W-PAD-38,y:navY,w:38,h:38,r:19};
+  draw.text('‹',prev.x+19,navY+27,{size:26,color:theme.bodyBright,align:'center'});
+  draw.text('›',next.x+19,navY+27,{size:26,color:theme.bodyBright,align:'center'});
+  zones.push({id:'prev-month',rect:prev},{id:'next-month',rect:next});
+  draw.text(cal.year+' 年 '+cal.month+' 月',W/2,navY+25,
+    {size:18,weight:'600',serif:true,color:theme.text,align:'center'});
+  var cellW=layout.innerW()/layout.CAL_COLS;
+  WEEK.forEach(function(day,i) {
+    draw.text(day,PAD+i*cellW+cellW/2,top+61,{size:11,color:theme.muted,align:'center'});
   });
-  draw.text("›", next.x + 17, navY + 21, {
-    size: 18,
-    color: theme.body,
-    align: "center",
-  });
-  zones.push({ id: "prev-month", rect: prev, radius: prev.r });
-  zones.push({ id: "next-month", rect: next, radius: next.r });
-
-  draw.text(cal.year + " 年 " + cal.month + " 月", W / 2, navY + 20, {
-    size: 15,
-    weight: "600",
-    color: theme.text,
-    align: "center",
-  });
-  draw.text("连续 " + cal.streak + " 天", W / 2, navY + 38, {
-    size: 11,
-    color: theme.muted,
-    align: "center",
-  });
-
-  var cellW = layout.innerW() / layout.CAL_COLS;
-  for (var w = 0; w < WEEK.length; w++) {
-    draw.text(WEEK[w], PAD + w * cellW + cellW / 2, top + 98, {
-      size: 11,
-      color: theme.faint,
-      align: "center",
-    });
-  }
-
-  var grid = top + 108;
-  cal.cells.forEach(function (cell, i) {
-    if (cell.type !== "day") return;
-    var b = layout.calendarCellRect(i);
-    var r = { x: b.x, y: grid + b.y - layout.calendarGridTop(), w: b.w, h: b.h, r: b.r };
-
-    if (cell.entry) {
-      gradientFill(r, cell.entry.gradient, 150, r.r);
-      draw.text(cell.entry.emoji || "", r.x + r.w / 2, r.y + r.h / 2 + 10, {
-        size: 21,
-        align: "center",
-      });
-      draw.text(String(cell.day), r.x + 5, r.y + 14, {
-        size: 9,
-        color: "rgba(255,255,255,0.72)",
-      });
+  var gridTop=top+layout.calendarGridTop()-4;
+  var gridBottom=layout.contentBottom(vp)-32;
+  draw.clipRect(0,gridTop,W,Math.max(0,gridBottom-gridTop));
+  cal.cells.forEach(function(cell,i) {
+    if(cell.type!=='day') return;
+    var r=layout.calendarCellRect(i);r.y+=top-(state.scroll || 0);
+    if(cell.entry) {
+      cardface.paint(r.x,r.y,r.w,r.h,r.r,
+        {name:cell.entry.roleName,emoji:cell.entry.emoji,gradient:cell.entry.gradient},
+        {emojiSize:14,nameSize:7,tagline:false,border:'rgba(230,218,187,.32)',borderWidth:.65});
+      // A quiet date corner, kept separate from the face artwork and role name.
+      fill({x:r.x+2,y:r.y+2,w:14,h:12,r:3},'rgba(12,17,25,.40)',3);
+      draw.text(String(cell.day),r.x+9,r.y+11,{size:8,color:'#ffffff',align:'center'});
     } else {
-      fill(r, cell.future ? theme.futureFill : theme.softFill, r.r);
-      draw.text(String(cell.day), r.x + r.w / 2, r.y + r.h / 2 + 4, {
-        size: 12,
-        color: cell.future ? theme.faint : theme.muted,
-        align: "center",
-      });
+      draw.text(String(cell.day),r.x+r.w/2,r.y+r.h/2+4,
+        {size:12,color:cell.future?theme.faint:theme.muted,align:'center'});
     }
-    if (cell.isToday) stroke(r, theme.gold, 1.5);
-
-    zones.push({ id: "day", date: cell.date, entry: cell.entry, rect: r, radius: r.r });
+    if(cell.isToday) {
+      if(cell.entry) stroke({x:r.x-2,y:r.y-2,w:r.w+4,h:r.h+4},theme.gold,6,1);
+      else stroke({x:r.x+r.w/2-14,y:r.y+r.h/2-14,w:28,h:28},theme.gold,14,1);
+    }
+    if(cell.entry && r.y+r.h>gridTop && r.y<gridBottom) {
+      zones.push({id:'day',date:cell.date,entry:cell.entry,sourceRect:r,
+        rect:{x:r.x,y:Math.max(r.y,gridTop),w:r.w,h:Math.min(r.y+r.h,gridBottom)-Math.max(r.y,gridTop)}});
+    }
   });
-
-  var rows = Math.ceil(cal.cells.length / layout.CAL_COLS);
-  return { zones: zones, contentH: layout.calendarContentH(rows) + 40 };
+  draw.restore();
+  var hasCards=cal.cells.some(function(cell){return Boolean(cell.entry);});
+  draw.text(hasCards?'点开一张，回看那天的角色':'每一天，都有新的可能',W/2,layout.contentBottom(vp)-9,
+    {size:11,color:theme.bodyBright,align:'center'});
+  return {zones:zones,contentH:layout.calendarContentH(Math.ceil(cal.cells.length/7))};
 }
 
 /* ==================== 图鉴 ==================== */

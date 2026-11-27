@@ -40,8 +40,28 @@ function updateHint() {
     tear: '在卡包上任意位置、任意方向划动撕开', tearFinish: '卡包已打开，卡牌正在出现', ring: '左右拖动转盘，点开三张卡',
     top: '三张候选正在就位', pick: '选中一张角色，再确认落定', reveal: '揭晓后可点击继续'};
   status.textContent = state.status !== 'ready' ? '正在准备今天的卡包…' :
-    (hints[state.anim.kind] || '完成角色任务，也可以看看日历和图鉴');
+    (hints[state.anim.kind] || (state.tab === 'today' ? '拖动旋转卡牌，轻点翻面查看角色描述' : '看看过去的角色，或浏览你的图鉴'));
+  canvas.setAttribute('aria-label', state.draw && state.tab === 'today'
+    ? '今日角色卡牌：'+state.draw.role.name+'。'+state.draw.role.intro+'。拖动旋转，点击或按空格翻面。'
+    : '每日角色互动卡包，按屏幕提示选择和拖动');
 }
+canvas.addEventListener('keydown',event=>{
+  const state=game.store.state;
+  const history=requireGame('js/calendar-card.js');
+  if(event.key==='Escape' && state.tab==='calendar' && history.active()) {
+    event.preventDefault();
+    const close=history.render(env.viewport()).find(zone=>zone.id==='calendar-card-close').rect;
+    game.dispatch(close.x+close.w/2,close.y+close.h/2);
+  } else if(event.key==='Enter' || event.key===' ') {
+    if(state.tab==='today' && state.draw && !game.store.stage()) {
+      event.preventDefault();const r=requireGame('js/today-card.js').rect(env.viewport());
+      game.dispatch(r.x+r.w/2,r.y+r.h/2);
+    } else if(state.tab==='calendar' && history.interactive()) {
+      event.preventDefault();const r=history.rect(env.viewport());
+      game.dispatch(r.x+r.w/2,r.y+r.h/2);
+    }
+  }
+});
 game.store.subscribe(updateHint);
 updateHint();
 let resizeTicket = null;

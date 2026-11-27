@@ -21,6 +21,8 @@ var pack = require("./pack.js");
 var pagReveal = require("./pag-reveal.js");
 var pagTear = require("./pag-tear.js");
 var sfx = require("./sfx.js");
+var todayCard = require("./today-card.js");
+var calendarCard = require("./calendar-card.js");
 
 var canvas = null;
 var zones = [];
@@ -143,14 +145,16 @@ function beginEntry() {
   c.globalAlpha *= entryFrame.opacity;
 }
 function entryZones(list) {
-  if (entryFrame.scale === 1) return list;
-  return list.map(function (zone) {
-    var r = zone.rect, k = entryFrame.scale;
-    return Object.assign({}, zone, { rect: Object.assign({}, r, {
-      x: entryFrame.cx + (r.x - entryFrame.cx) * k,
-      y: entryFrame.cy + (r.y - entryFrame.cy) * k,
-      w: r.w * k, h: r.h * k,
-    }) });
+  if (entryFrame.scale===1) return list;
+  function transform(r) {
+    var k=entryFrame.scale;
+    return Object.assign({},r,{x:entryFrame.cx+(r.x-entryFrame.cx)*k,
+      y:entryFrame.cy+(r.y-entryFrame.cy)*k,w:r.w*k,h:r.h*k});
+  }
+  return list.map(function(zone) {
+    var next=Object.assign({},zone,{rect:transform(zone.rect)});
+    if(zone.sourceRect) next.sourceRect=transform(zone.sourceRect);
+    return next;
   });
 }
 function entryPoint(x, y, kind) {
@@ -181,13 +185,15 @@ function paint() {
     store.finishReveal();
   }
   var recoiling = store.tickTear(time);
+  if (!todayCardActive(st)) todayCard.cancel();
+  if (st.tab!=="calendar" && calendarCard.active()) calendarCard.release();
   syncPag();
 
   draw.clear();
   syncPhase();
   starfield.paint(v);
 
-  var titles = { today: "今日角色", calendar: "历史日历", collection: "角色图鉴" };
+  var titles = { today: "今日角色", calendar: "日历", collection: "角色图鉴" };
 
   // 开卡包过场是全屏的，有它就不画标题和换背景按钮
   var packStage = st.tab === "today" && st.status === "ready" ? store.stage() : "";
@@ -200,7 +206,7 @@ function paint() {
   if (!packStage || packStage === "reveal") {
     var subs = {
       today: st.draw ? layout.monthDay(st.draw.date) : "",
-      calendar: st.calendar.loading ? "" : "连续 " + st.calendar.streak + " 天",
+      calendar: "",
       collection: st.collection.loading
         ? ""
         : "已解锁 " + countOwned(st) + " / " + st.collection.cards.length,
@@ -209,7 +215,7 @@ function paint() {
     view.renderBgButton(v, layout.bgButtonRect(v), bg);
   }
 
-  // 揭晓淡出时露出的任务内容仍限制在内容区，不能穿过底部导航。
+  // 揭晓淡出时露出的今日卡牌仍限制在内容区，不能穿过底部导航。
   if (packStage === "reveal") draw.clipRect(0, layout.contentTop(v), v.width, layout.contentH(v));
   var result;
   beginEntry();
@@ -237,7 +243,12 @@ function paint() {
     zones = zones.concat(view.renderSheet(v, st));
   }
 
-  // 开卡包过场画在内容上方；揭晓的最后一段透出下面的任务页。
+  if (st.tab==='calendar' && calendarCard.active()) {
+    var calendarZones=calendarCard.render(v);
+    if(calendarZones.length) zones=calendarZones.concat(tabZones);
+  }
+
+  // 开卡包过场画在内容上方；揭晓的最后一段透出下面的今日卡牌。
   if (packStage) {
     // 选包放大和 PAG 自带完整时间轴，页面入场不叠加到这两段。
     var enteringPack = packStage !== "opening" && packStage !== "reveal";
@@ -248,6 +259,8 @@ function paint() {
     if (packStage === "reveal") st.scrollMax = 0;
   }
   return Boolean(
+    (st.tab==='calendar' && calendarCard.busy(v)) ||
+    (todayCardActive(st) && todayCard.snapshot().busy) ||
     entryFrame.busy || starfield.isFading() || backdrop.isFading() ||
     (packStage && (recoiling || packview.busy(st))) ||
     (st.toast && time - st.toastAt < 2000)
@@ -283,6 +296,15 @@ function toDesign(touch) {
 
 /* ---------------- 触摸 ---------------- */
 
+function todayCardActive(st) {
+  return st.tab === 'today' && st.status === 'ready' && st.draw && !store.stage() && !st.selected;
+}
+
+function cardController(st) {
+  if(st.tab==='calendar' && calendarCard.interactive()) return calendarCard;
+  return todayCardActive(st) ? todayCard : null;
+}
+
 function firstTouch(e) {
   if (e.touches && e.touches.length) return e.touches[0];
   if (e.changedTouches && e.changedTouches.length) return e.changedTouches[0];
@@ -317,6 +339,13 @@ function onTouchStart(e) {
     tilt: tilting ? store.state.anim.tilt || 0 : 0,
   };
   if (tilting) store.tiltTear(drag.tilt);
+  var zone = topZoneAt(p.x, p.y);
+  var controller=cardController(store.state);
+  if(controller && zone && (zone.id==='today-card' || zone.id==='calendar-card')) {
+    var cardPoint=controller===todayCard?entryPoint(p.x,p.y,''):p;
+    drag.card=controller;
+    controller.begin(cardPoint.x,cardPoint.y);
+  }
 }
 
 /** 环形阶段：横向拖动 = 转动转盘 */
@@ -344,6 +373,22 @@ function onTouchMove(e) {
   var dy = p.y - drag.startY;
   drag.lastX = p.x;
   drag.lastY = p.y;
+
+  if(drag.card) {
+    if(cardController(store.state)!==drag.card) {drag.card.cancel();return;}
+    if(Math.abs(dx)>5 || Math.abs(dy)>5) drag.moved=true;
+    if(drag.moved) {
+      var cardPoint=drag.card===todayCard?entryPoint(p.x,p.y,''):p;
+      drag.card.move(cardPoint.x,cardPoint.y);
+      requestFrame();
+    }
+    return;
+  }
+  // A focused calendar card owns gestures; don't scroll the month beneath it.
+  if(store.state.tab==='calendar' && calendarCard.active()) {
+    if(Math.abs(dx)>5 || Math.abs(dy)>5) drag.moved=true;
+    return;
+  }
 
   // 使用实际划动距离；左右、上下、斜划都有效，点击和微小抖动不撕开。
   if (tearDragging(store.state)) {
@@ -392,6 +437,7 @@ function onTouchEnd(e) {
   if (!drag) return;
   if (e && e.canceled) {
     var wasTearing = tearDragging(store.state);
+    if (drag.card) { drag.card.end(true); requestFrame(); }
     drag = null;
     if (wasTearing) { store.releaseTear(); requestFrame(); }
     return;
@@ -400,7 +446,14 @@ function onTouchEnd(e) {
   var wasDrag = drag.moved;
   var point = t ? toDesign(t) : { x: drag.startX, y: drag.lastY };
   var tearing = tearDragging(store.state);
+  var wasCard = drag.card;
   drag = null;
+  if (wasCard) {
+    if (cardController(store.state)===wasCard) wasCard.end(false, !wasDrag);
+    else wasCard.cancel();
+    requestFrame();
+    return;
+  }
   if (tearing) {
     // 松手：撕到哪儿算哪儿，弹回去一点点，不用从头再划
     store.releaseTear();
@@ -434,6 +487,13 @@ function dispatch(x, y) {
 
   if (!z) return;
 
+  if(z.id==='calendar-card') {calendarCard.flip();requestFrame();return;}
+  if(z.id==='calendar-card-close' || z.id==='calendar-card-dismiss') {
+    calendarCard.close(env.viewport());requestFrame();return;
+  }
+  if (z.id === "today-card" && todayCardActive(st)) {
+    todayCard.flip(); requestFrame(); return;
+  }
   if (z.id === "tab") {
     store.setTab(z.tab);
     return;
@@ -488,24 +548,14 @@ function dispatch(x, y) {
     store.loadCalendar(ny, nm);
     return;
   }
-  if (z.id === "day") {
-    if (z.entry) {
-      store.selectCard({
-        name: z.entry.roleName,
-        emoji: z.entry.emoji,
-        tagline:
-          layout.monthDay(z.date) +
-          " · " +
-          z.entry.tasksDone +
-          " / " +
-          z.entry.tasksTotal +
-          " 任务",
-        intro: "这一天的角色。",
-        gradient: z.entry.gradient,
-        accent: z.entry.gradient[0],
-        times: 0,
-        taskCount: 0,
-      });
+  if (z.id === 'retry-calendar') {
+    store.loadCalendar(st.calendar.year,st.calendar.month);
+    return;
+  }
+  if (z.id === 'day') {
+    if(z.entry) {
+      calendarCard.open(z,env.viewport());
+      requestFrame();
     }
     return;
   }
@@ -615,7 +665,7 @@ function boot() {
   var runtime = w && typeof w.createCanvas === "function" ? w.createCanvas() : null;
   if (runtime) setCanvas(runtime);
 
-  if (w && typeof w.onHide === "function") w.onHide(function () { frameLoop.pause(); pagReveal.pause(); pagTear.pause(); sfx.pause(); });
+  if (w && typeof w.onHide === "function") w.onHide(function () { todayCard.cancel(); calendarCard.cancel(); frameLoop.pause(); pagReveal.pause(); pagTear.pause(); sfx.pause(); });
   if (w && typeof w.onShow === "function") w.onShow(function () { pagReveal.resume(); pagTear.resume(); frameLoop.resume(); sfx.resume(); });
 
   if (w && typeof w.onTouchStart === "function") {
