@@ -19,7 +19,10 @@ var assets = require("./assets.js");
 var animation = require("./animation.js");
 var pack = require("./pack.js");
 var pagReveal = require("./pag-reveal.js");
+var pagTear = require("./pag-tear.js");
 var sfx = require("./sfx.js");
+var todayCard = require("./today-card.js");
+var calendarCard = require("./calendar-card.js");
 
 var canvas = null;
 var zones = [];
@@ -52,6 +55,7 @@ function setCanvas(c) {
   canvas = c;
   draw.init(c);
   pagReveal.onFrame(requestFrame);
+  pagTear.onFrame(requestFrame);
   syncPag();
   resize();
 }
@@ -69,11 +73,23 @@ function requestFrame() {
   if (canvas) frameLoop.request();
 }
 
+/** Tear owns its file/surface only until the packet opens; the SDK stays shared. */
+function syncTearPag(st, kind) {
+  if (st.tab !== "today" || st.status !== "ready" || st.draw) { pagTear.release(); return; }
+  if (kind === "pack") { pagTear.preload(); return; }
+  if (kind === "opening" || kind === "tear" || kind === "tearFinish") {
+    if (assets.pack(st.anim.series) || !assets.pending()) pagTear.prepare(pack.seriesOf(st.anim.series));
+    return;
+  }
+  pagTear.release();
+}
+
 /** Warm PAG while the player opens/selects cards; discard role resources on exit. */
 function syncPag() {
   if (!canvas) return;
   var st = store.state;
   var kind = (st.anim || {}).kind;
+  syncTearPag(st, kind);
   if (st.tab !== "today" || st.status !== "ready") { pagReveal.release(); return; }
   if (kind === "reveal" && st.draw) { pagReveal.prepare(st.draw.role); return; }
   if (!st.draw) {
@@ -129,26 +145,22 @@ function beginEntry() {
   c.globalAlpha *= entryFrame.opacity;
 }
 function entryZones(list) {
-  if (entryFrame.scale === 1) return list;
-  return list.map(function (zone) {
-    var r = zone.rect, k = entryFrame.scale;
-    return Object.assign({}, zone, { rect: Object.assign({}, r, {
-      x: entryFrame.cx + (r.x - entryFrame.cx) * k,
-      y: entryFrame.cy + (r.y - entryFrame.cy) * k,
-      w: r.w * k, h: r.h * k,
-    }) });
+  if (entryFrame.scale===1) return list;
+  function transform(r) {
+    var k=entryFrame.scale;
+    return Object.assign({},r,{x:entryFrame.cx+(r.x-entryFrame.cx)*k,
+      y:entryFrame.cy+(r.y-entryFrame.cy)*k,w:r.w*k,h:r.h*k});
+  }
+  return list.map(function(zone) {
+    var next=Object.assign({},zone,{rect:transform(zone.rect)});
+    if(zone.sourceRect) next.sourceRect=transform(zone.sourceRect);
+    return next;
   });
 }
 function entryPoint(x, y, kind) {
-  if (entryFrame.tab !== store.state.tab || entryFrame.kind !== kind) return {x:x,y:y};
+  if (entryFrame.scale === 1 || entryFrame.tab !== store.state.tab || entryFrame.kind !== kind) return {x:x,y:y};
   return {x:entryFrame.cx + (x-entryFrame.cx)/entryFrame.scale,
     y:entryFrame.cy + (y-entryFrame.cy)/entryFrame.scale};
-}
-
-// Cover metadata stays in design space; input uses the latest displayed transform.
-function scratchPoint(point, cover) {
-  var p = entryPoint(point.x, point.y, entryFrame.kind);
-  return {x:p.x-cover.x, y:p.y-cover.y};
 }
 
 function render(time) {
@@ -163,21 +175,25 @@ function paint() {
   // 所有阶段在画之前推进；一帧内的状态和命中区始终对应同一画面。
   if (anim.kind === "opening" && time - anim.at >= pack.OPEN_MS) {
     store.enterTear();
-  } else if (anim.kind === "tear" && anim.doneAt && time - anim.doneAt >= pack.TEAR_FINISH_MS) {
-    store.enterRing();
+  } else if ((anim.kind === "tear" || anim.kind === "tearFinish") && anim.doneAt) {
+    if (anim.kind === "tear") store.enterTearFinish(pagTear.begin(anim.doneAt, pack.seriesOf(anim.series),anim.tearDirection || 1), pagTear.status().durationMs);
+    if (st.anim.finishMode === "pag" && pagTear.status().mode !== "pag") store.fallbackTearFinish();
+    if (time - st.anim.doneAt >= st.anim.finishMs) store.enterRing();
   } else if (anim.kind === "top" && time - anim.at >= pack.TOP_MS) {
     store.enterPick();
   } else if (anim.kind === "reveal" && time - anim.at >= pack.REVEAL_MS) {
     store.finishReveal();
   }
   var recoiling = store.tickTear(time);
+  if (!todayCardActive(st)) todayCard.cancel();
+  if (st.tab!=="calendar" && calendarCard.active()) calendarCard.release();
   syncPag();
 
   draw.clear();
   syncPhase();
   starfield.paint(v);
 
-  var titles = { today: "今日角色", calendar: "历史日历", collection: "角色图鉴" };
+  var titles = { today: "今日角色", calendar: "日历", collection: "角色图鉴" };
 
   // 开卡包过场是全屏的，有它就不画标题和换背景按钮
   var packStage = st.tab === "today" && st.status === "ready" ? store.stage() : "";
@@ -190,7 +206,7 @@ function paint() {
   if (!packStage || packStage === "reveal") {
     var subs = {
       today: st.draw ? layout.monthDay(st.draw.date) : "",
-      calendar: st.calendar.loading ? "" : "连续 " + st.calendar.streak + " 天",
+      calendar: "",
       collection: st.collection.loading
         ? ""
         : "已解锁 " + countOwned(st) + " / " + st.collection.cards.length,
@@ -199,15 +215,15 @@ function paint() {
     view.renderBgButton(v, layout.bgButtonRect(v), bg);
   }
 
-  // 揭晓淡出时露出的任务内容仍限制在内容区，不能穿过底部导航。
-  if (st.tab === "today") draw.clipRect(0, layout.contentTop(v), v.width, layout.contentH(v));
+  // 揭晓淡出时露出的今日卡牌仍限制在内容区，不能穿过底部导航。
+  if (packStage === "reveal") draw.clipRect(0, layout.contentTop(v), v.width, layout.contentH(v));
   var result;
   beginEntry();
   if (st.tab === "today") result = view.renderToday(v, st);
   else if (st.tab === "calendar") result = view.renderCalendar(v, st);
   else result = view.renderCollection(v, st);
   draw.restore();
-  if (st.tab === "today") draw.restore();
+  if (packStage === "reveal") draw.restore();
 
   var list = entryZones((result && result.zones) || []);
   var contentH = (result && result.contentH) || layout.contentH(v);
@@ -227,7 +243,12 @@ function paint() {
     zones = zones.concat(view.renderSheet(v, st));
   }
 
-  // 开卡包过场画在内容上方；揭晓的最后一段透出下面的任务页。
+  if (st.tab==='calendar' && calendarCard.active()) {
+    var calendarZones=calendarCard.render(v);
+    if(calendarZones.length) zones=calendarZones.concat(tabZones);
+  }
+
+  // 开卡包过场画在内容上方；揭晓的最后一段透出下面的今日卡牌。
   if (packStage) {
     // 选包放大和 PAG 自带完整时间轴，页面入场不叠加到这两段。
     var enteringPack = packStage !== "opening" && packStage !== "reveal";
@@ -238,6 +259,8 @@ function paint() {
     if (packStage === "reveal") st.scrollMax = 0;
   }
   return Boolean(
+    (st.tab==='calendar' && calendarCard.busy(v)) ||
+    (todayCardActive(st) && todayCard.snapshot().busy) ||
     entryFrame.busy || starfield.isFading() || backdrop.isFading() ||
     (packStage && (recoiling || packview.busy(st))) ||
     (st.toast && time - st.toastAt < 2000)
@@ -273,6 +296,15 @@ function toDesign(touch) {
 
 /* ---------------- 触摸 ---------------- */
 
+function todayCardActive(st) {
+  return st.tab === 'today' && st.status === 'ready' && st.draw && !store.stage() && !st.selected;
+}
+
+function cardController(st) {
+  if(st.tab==='calendar' && calendarCard.interactive()) return calendarCard;
+  return todayCardActive(st) ? todayCard : null;
+}
+
 function firstTouch(e) {
   if (e.touches && e.touches.length) return e.touches[0];
   if (e.changedTouches && e.changedTouches.length) return e.changedTouches[0];
@@ -286,14 +318,20 @@ function onTouchStart(e) {
   var p = toDesign(t);
   var packet = tearDragging(store.state) ? pack.tearRect(layout.contentTop(env.viewport())) : null;
   var packetPoint = entryPoint(p.x, p.y, "tear");
-  var tilting = packet && packetPoint.x >= packet.x && packetPoint.x <= packet.x + packet.w &&
-    packetPoint.y >= packet.y && packetPoint.y <= packet.y + packet.h;
+  function inPacket(point) {
+    return packet && point.x >= packet.x - 12 && point.x <= packet.x + packet.w + 12 &&
+      point.y >= packet.y && point.y <= packet.y + packet.h;
+  }
+  // 入场期间同时接受画面坐标和设计稿坐标，包边缘起手也能把玩。
+  var tilting = inPacket(packetPoint) || inPacket(p);
   drag = {
     startX: p.x,
     startY: p.y,
     lastX: p.x,
     lastY: p.y,
     prevX: p.x,
+    prevY: p.y,
+    tearDirection: 0,
     scroll: store.state.scroll,
     moved: false,
     turned: false,
@@ -302,10 +340,11 @@ function onTouchStart(e) {
   };
   if (tilting) store.tiltTear(drag.tilt);
   var zone = topZoneAt(p.x, p.y);
-  if (!e.scrollOnly && !store.state.selected && store.state.status === "ready" && zone && zone.id === "scratch" && store.scratchPending()) {
-    var local = scratchPoint(p, zone.cover);
-    drag.scratch = {key:store.state.scratch.key, cover:zone.cover, prev:local};
-    store.scratchStroke(local, local);
+  var controller=cardController(store.state);
+  if(controller && zone && (zone.id==='today-card' || zone.id==='calendar-card')) {
+    var cardPoint=controller===todayCard?entryPoint(p.x,p.y,''):p;
+    drag.card=controller;
+    controller.begin(cardPoint.x,cardPoint.y);
   }
 }
 
@@ -314,7 +353,7 @@ function ringDragging(st) {
   return st.tab === "today" && !st.draw && st.anim && st.anim.kind === "ring";
 }
 
-/** 撕开阶段：横向划过包口 = 撕开（等玩家自己动手，不自动跑） */
+/** 撕开阶段：任意位置、任意方向的划动推进撕开，不要求沿封口划。 */
 function tearDragging(st) {
   return (
     st.tab === "today" &&
@@ -335,22 +374,36 @@ function onTouchMove(e) {
   drag.lastX = p.x;
   drag.lastY = p.y;
 
-  if (drag.scratch) {
-    var gesture = drag.scratch;
-    var local = scratchPoint(p, gesture.cover);
-    if (store.state.tab === "today" && store.state.scratch && store.state.scratch.key === gesture.key) {
-      store.scratchStroke(gesture.prev, local);
+  if(drag.card) {
+    if(cardController(store.state)!==drag.card) {drag.card.cancel();return;}
+    if(Math.abs(dx)>5 || Math.abs(dy)>5) drag.moved=true;
+    if(drag.moved) {
+      var cardPoint=drag.card===todayCard?entryPoint(p.x,p.y,''):p;
+      drag.card.move(cardPoint.x,cardPoint.y);
+      requestFrame();
     }
-    gesture.prev = local; drag.moved = true;
-    return; // Even after auto-unlock, do not turn the remainder into scrolling/taps.
+    return;
+  }
+  // A focused calendar card owns gestures; don't scroll the month beneath it.
+  if(store.state.tab==='calendar' && calendarCard.active()) {
+    if(Math.abs(dx)>5 || Math.abs(dy)>5) drag.moved=true;
+    return;
   }
 
-  // 撕包口：只认往右的那一小段位移，撕口严格跟着手指走
+  // 使用实际划动距离；左右、上下、斜划都有效，点击和微小抖动不撕开。
   if (tearDragging(store.state)) {
-    var step = p.x - (drag.prevX == null ? drag.startX : drag.prevX);
-    if (drag.tilting) store.tiltTear(drag.tilt + dx / pack.TEAR_SWIPE * 8);
-    if (step > 0) store.swipeTear(step);
+    var stepX = p.x - (drag.prevX == null ? drag.startX : drag.prevX);
+    var stepY = p.y - (drag.prevY == null ? drag.startY : drag.prevY);
+    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+      if (!drag.tearDirection) {
+        drag.tearDirection = Math.abs(dx) >= Math.abs(dy) && dx < 0 ? -1 : 1;
+        stepX = dx; stepY = dy; // 达到拖动阈值后补上起手位移，不损失撕开距离。
+      }
+      var step = Math.sqrt(stepX * stepX + stepY * stepY);
+      if (step > 0) store.swipeTear(step,drag.tearDirection);
+    }
     drag.prevX = p.x;
+    drag.prevY = p.y;
     if (Math.abs(dx) > 4 || Math.abs(dy) > 4) drag.moved = true;
     requestFrame();
     return;
@@ -382,11 +435,9 @@ function onTouchMove(e) {
 
 function onTouchEnd(e) {
   if (!drag) return;
-  if (drag.scratch) {
-    store.saveScratch(); drag = null; requestFrame(); return;
-  }
   if (e && e.canceled) {
     var wasTearing = tearDragging(store.state);
+    if (drag.card) { drag.card.end(true); requestFrame(); }
     drag = null;
     if (wasTearing) { store.releaseTear(); requestFrame(); }
     return;
@@ -395,7 +446,14 @@ function onTouchEnd(e) {
   var wasDrag = drag.moved;
   var point = t ? toDesign(t) : { x: drag.startX, y: drag.lastY };
   var tearing = tearDragging(store.state);
+  var wasCard = drag.card;
   drag = null;
+  if (wasCard) {
+    if (cardController(store.state)===wasCard) wasCard.end(false, !wasDrag);
+    else wasCard.cancel();
+    requestFrame();
+    return;
+  }
   if (tearing) {
     // 松手：撕到哪儿算哪儿，弹回去一点点，不用从头再划
     store.releaseTear();
@@ -429,6 +487,13 @@ function dispatch(x, y) {
 
   if (!z) return;
 
+  if(z.id==='calendar-card') {calendarCard.flip();requestFrame();return;}
+  if(z.id==='calendar-card-close' || z.id==='calendar-card-dismiss') {
+    calendarCard.close(env.viewport());requestFrame();return;
+  }
+  if (z.id === "today-card" && todayCardActive(st)) {
+    todayCard.flip(); requestFrame(); return;
+  }
   if (z.id === "tab") {
     store.setTab(z.tab);
     return;
@@ -483,24 +548,14 @@ function dispatch(x, y) {
     store.loadCalendar(ny, nm);
     return;
   }
-  if (z.id === "day") {
-    if (z.entry) {
-      store.selectCard({
-        name: z.entry.roleName,
-        emoji: z.entry.emoji,
-        tagline:
-          layout.monthDay(z.date) +
-          " · " +
-          z.entry.tasksDone +
-          " / " +
-          z.entry.tasksTotal +
-          " 任务",
-        intro: "这一天的角色。",
-        gradient: z.entry.gradient,
-        accent: z.entry.gradient[0],
-        times: 0,
-        taskCount: 0,
-      });
+  if (z.id === 'retry-calendar') {
+    store.loadCalendar(st.calendar.year,st.calendar.month);
+    return;
+  }
+  if (z.id === 'day') {
+    if(z.entry) {
+      calendarCard.open(z,env.viewport());
+      requestFrame();
     }
     return;
   }
@@ -528,7 +583,6 @@ function dispatch(x, y) {
  * showModal 的 editable 从基础库 2.17.1 起支持;更老的版本退回 showKeyboard。
  */
 function openKeyboard() {
-  if (store.scratchPending()) return;
   var w = env.getWx();
   if (!w) return;
 
@@ -611,8 +665,8 @@ function boot() {
   var runtime = w && typeof w.createCanvas === "function" ? w.createCanvas() : null;
   if (runtime) setCanvas(runtime);
 
-  if (w && typeof w.onHide === "function") w.onHide(function () { store.saveScratch(); drag = null; frameLoop.pause(); pagReveal.pause(); sfx.pause(); });
-  if (w && typeof w.onShow === "function") w.onShow(function () { pagReveal.resume(); frameLoop.resume(); sfx.resume(); });
+  if (w && typeof w.onHide === "function") w.onHide(function () { todayCard.cancel(); calendarCard.cancel(); frameLoop.pause(); pagReveal.pause(); pagTear.pause(); sfx.pause(); });
+  if (w && typeof w.onShow === "function") w.onShow(function () { pagReveal.resume(); pagTear.resume(); frameLoop.resume(); sfx.resume(); });
 
   if (w && typeof w.onTouchStart === "function") {
     w.onTouchStart(onTouchStart);

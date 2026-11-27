@@ -8,15 +8,20 @@
     "start": "node --experimental-strip-types server/src/index.ts",
     "pag:sync": "node tools/sync-pag.cjs",
     "pag:build": "node tools/build-pag-template.cjs",
-    "test:animation": "node --test tools/animation.test.cjs tools/pag-reveal.test.cjs tools/sfx.test.cjs",
+    "test:animation": "node --test tools/animation.test.cjs tools/pag-reveal.test.cjs tools/pag-tear.test.cjs tools/sfx.test.cjs",
     "test:pag": "node tools/pag-render-check.cjs",
     "pag:pack": "node tools/pack-pag-template.cjs",
+    "pag:tear:build": "node tools/build-pag-tear.cjs",
+    "pag:tear:pack": "node tools/pack-pag-tear.cjs",
     "sfx:build": "node tools/build-sfx.cjs",
+    "imagegen": "node tools/generate-image.cjs",
+    "test:imagegen": "node --test tools/imagegen.test.cjs",
     "pag:native": "node tools/pag-native-probe.cjs",
     "web:build": "node tools/build-web.cjs",
     "web:dev": "node tools/build-web.cjs --serve",
     "web:preview": "node tools/serve-web.cjs",
-    "test:web": "node tools/web-check.cjs"
+    "test:web": "node tools/web-check.cjs",
+    "test:pages": "node --test tools/latest-pages.test.cjs tools/collection.test.cjs"
   },
   "devDependencies": {
     "libpag-miniprogram": "4.3.51",

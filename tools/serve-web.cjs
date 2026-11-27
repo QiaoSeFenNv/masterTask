@@ -9,7 +9,7 @@ const brotli = promisify(zlib.brotliCompress);
 const gzip = promisify(zlib.gzip);
 const ROOT = path.resolve(__dirname, '../web/dist');
 const MIME = {'.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8',
-  '.css':'text/css; charset=utf-8', '.svg':'image/svg+xml', '.jpg':'image/jpeg', '.wav':'audio/wav',
+  '.css':'text/css; charset=utf-8', '.svg':'image/svg+xml', '.jpg':'image/jpeg', '.png':'image/png', '.wav':'audio/wav',
   '.wasm':'application/wasm', '.json':'application/json; charset=utf-8', '.txt':'text/plain; charset=utf-8'};
 const CSP = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; media-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'";
 function createServer() {
@@ -42,7 +42,7 @@ function createServer() {
       res.setHeader('ETag', entry.etag);
       if (req.headers['if-none-match'] === entry.etag) { res.writeHead(304); res.end(); return; }
       let body = entry.raw;
-      if (extension !== '.jpg' && body.length > 1024) {
+      if (extension !== '.jpg' && extension !== '.png' && body.length > 1024) {
         const accepted = req.headers['accept-encoding'] || '';
         if (accepted.includes('br')) {
           if (!entry.br) entry.br = brotli(entry.raw, {params:{[zlib.constants.BROTLI_PARAM_QUALITY]: 5}});

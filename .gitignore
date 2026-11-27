@@ -50,3 +50,6 @@ tools/pag-native-preview/
 # Generated Web preview and browser verification artifacts
 /web/dist/
 /tools/.web-preview/
+
+# Local image-generation candidates and responses
+/tools/.image-preview/

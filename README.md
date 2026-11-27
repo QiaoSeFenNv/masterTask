@@ -39,7 +39,7 @@ npm run dev                      # http://127.0.0.1:3000
 ```
 
 启动后端无需 `npm install`:服务端只用 Node 内置模块(`node:http`、`node:sqlite`、`node:crypto`)。
-需要 **Node 22.5+**(用到 `node:sqlite` 与 `--experimental-strip-types`),当前验证版本 Node 24。
+需要 **Node 24**(用到 `node:sqlite` 与 `--experimental-strip-types`),当前验证版本 Node 24。
 
 首次启动自动创建 `data/roles.db`。本地没有 `WX_APPSECRET` 时登录走 **mock 模式**。
 
@@ -58,7 +58,7 @@ npm run dev                      # http://127.0.0.1:3000
 npm run web:dev                   # http://127.0.0.1:4173
 ```
 
-浏览器版无需后端或微信登录,可用鼠标和触摸体验完整开包流程。角色、任务与手记只保存在当前浏览器。分享与静态托管说明见 [WEB.md](WEB.md)。
+浏览器版无需后端或微信登录,可用鼠标和触摸体验完整开包流程。最新页面为整张 3D 今日卡牌、卡牌日历与油画图鉴，整合来源和验收见 [LATEST-PAGES.md](LATEST-PAGES.md)。角色、任务与手记只保存在当前浏览器。分享与静态托管说明见 [WEB.md](WEB.md)。
 
 ---
 
@@ -207,3 +207,9 @@ node tools/sync-roles.cjs    # 同步到 game/data/roles.js
 4. 开发者工具**取消勾选**「不校验合法域名」,真机验证
 5. **小游戏账号要发布,需要「游戏」相关资质**(个人主体通常拿不到版号)。这一步在正式上线前绕不过去,建议先确认账号类型和资质路径
 6. 隐私指引、分享/海报能力按小游戏规范确认
+
+## 可选图片素材工具
+
+可在开发电脑使用配置的 TeleAPI 服务生成背景候选图：`npm run imagegen -- --help`。配置、三套提示词与用法见 [图片生成工具](tools/imagegen/README.md)。Key 保存在本机忽略文件中，现有小游戏与 Web 资源保持原样。
+
+撕开完成段的资源契约与替换说明见 [tools/pag/tear-README.md](tools/pag/tear-README.md)。Web 构建自动打包现有 tear.pag；用 `npm run pag:tear:pack` 可单独打包 AE 导出文件，用 `npm run pag:tear:build` 可重新生成内置撕开动画。

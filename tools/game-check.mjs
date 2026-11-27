@@ -30,6 +30,7 @@ function makeCtx() {
     shadowColor: "",
     shadowBlur: 0,
     shadowOffsetY: 0,
+    transform(...values) { ops.push(["transform", ...values]); },
     setTransform(a, b, c, d, e, f) {
       ops.push(["setTransform", a, b, c, d, e, f]);
     },
@@ -320,13 +321,14 @@ const run = async () => {
       const center = packet.x + packet.w / 2;
       app.onTouchStart(finger(center));
       app.onTouchMove(finger(center - 160));
-      check("向左把玩最多倾斜 -8°，不会倒撕包口", store.state.anim.tilt === -8 && store.state.anim.p === 0);
+      check("向左划动同样撕通并最多倾斜 -8°", store.state.anim.tilt === -8 && store.state.anim.p === 1 && Boolean(store.state.anim.doneAt));
       app.onTouchEnd({ canceled: true });
       const returnAt = store.state.anim.tiltAt;
       store.tickTear(returnAt + 130);
       check("松手或取消触摸后倾斜缓动回正", store.state.anim.tilt > -8 && store.state.anim.tilt < 0);
       store.tickTear(returnAt + 260);
-      check("回正后停止倾斜动画且撕口仍为零", store.state.anim.tilt === 0 && !store.state.anim.tiltAt && store.state.anim.p === 0);
+      check("回正后停止倾斜动画且撕通进度保留", store.state.anim.tilt === 0 && !store.state.anim.tiltAt && store.state.anim.p === 1);
+      store.state.anim = { ...originalTear };
       app.onTouchStart(finger(center));
       app.onTouchMove(finger(center + 60));
       check("向右倾斜不影响原来的撕开距离", store.state.anim.tilt > 0 && store.state.anim.tilt <= 8 && Math.abs(store.state.anim.p - 0.4) < 0.0001);
@@ -345,7 +347,60 @@ const run = async () => {
       app.onTouchEnd({ changedTouches: [{ clientX: center + 160, clientY: packet.y + packet.h / 2 }] });
       store.tickTear(store.state.anim.tiltAt + 260);
       check("撕通后包身回正，纸条飘走阶段与撕口不变", store.state.anim.tilt === 0 && store.state.anim.p === 1 && store.stage() === "tear");
+      const resetTear = () => { store.state.anim = { ...originalTear, p: 0, doneAt: 0, recoilAt: 0, tilt: 0, tiltAt: 0 }; };
+      resetTear();
+      const outside = packet.x - 20;
+      app.onTouchStart(finger(outside));
+      app.onTouchMove(finger(outside + 75));
+      check("包外起手撕到一半也倾斜 4°，原撕开距离不变",
+        Math.abs(store.state.anim.p - 0.5) < 0.0001 && Math.abs(store.state.anim.tilt - 4) < 0.0001);
+      app.onTouchMove(finger(outside + openingPack.TEAR_SWIPE));
+      check("包外起手撕通也达到 8°", store.state.anim.tilt === 8 && store.state.anim.p === 1 && Boolean(store.state.anim.doneAt));
+      app.onTouchEnd({ canceled: true });
+      store.tickTear(store.state.anim.tiltAt + 260);
+      check("包外起手撕通仍在 260ms 内回正", store.state.anim.tilt === 0 && store.state.anim.p === 1);
+
+      resetTear();
+      app.onTouchStart(finger(packet.x - 11));
+      app.onTouchMove(finger(packet.x - 26));
+      check("包左缘外起手向左也能撕开", store.state.anim.tilt < 0 && Math.abs(store.state.anim.p - 0.1) < 0.0001);
+      app.onTouchEnd({ canceled: true });
+
+      // 输入不再依赖包口高度或横向右划，原 150 单位阈值仍然有效。
+      const freeFinger = (x,y) => ({touches:[{clientX:x,clientY:y}]});
+      const diagon = 1 / Math.sqrt(2);
+      for (const sample of [
+        {label:'包面上部右划',x:packet.x+20,y:packet.y+28,vx:1,vy:0},
+        {label:'包面中部左划',x:packet.x+packet.w-20,y:packet.y+110,vx:-1,vy:0},
+        {label:'包面下部上划',x:center,y:packet.y+180,vx:0,vy:-1},
+        {label:'包面上部下划',x:center,y:packet.y+28,vx:0,vy:1},
+        {label:'包面中部斜划',x:center,y:packet.y+105,vx:diagon,vy:-diagon}
+      ]) {
+        resetTear();app.onTouchStart(freeFinger(sample.x,sample.y));
+        app.onTouchMove(freeFinger(sample.x+sample.vx*75,sample.y+sample.vy*75));
+        check(sample.label+'半程严格跟随原距离',Math.abs(store.state.anim.p-.5)<0.0001 && !store.state.anim.doneAt);
+        app.onTouchMove(freeFinger(sample.x+sample.vx*openingPack.TEAR_SWIPE,sample.y+sample.vy*openingPack.TEAR_SWIPE));
+        check(sample.label+'按原阈值撕通',store.state.anim.p===1 && Boolean(store.state.anim.doneAt));
+        app.onTouchEnd({canceled:true});
+      }
+      resetTear();app.onTouchStart(freeFinger(center,packet.y+105));
+      app.onTouchMove(freeFinger(center+3,packet.y+107));
+      check('点击和微小抖动不会自动撕开',store.state.anim.p===0 && !store.state.anim.doneAt);
+      app.onTouchEnd({canceled:true});
+      resetTear();app.onTouchStart(freeFinger(center,packet.y+180));
+      for(let i=1;i<=13;i++)app.onTouchMove(freeFinger(center,packet.y+180-openingPack.TEAR_SWIPE*i/13));
+      check('分段像素换算的浮点误差不挡住刚好 150 单位的手势',store.state.anim.p===1 && Boolean(store.state.anim.doneAt));
+      app.onTouchEnd({canceled:true});
+      resetTear();
+      const entryAt = Date.now() - 220;
+      store.state.tab = "calendar"; app.render(entryAt - 1);
+      store.state.tab = "today"; app.render(entryAt);
+      app.onTouchStart(finger(packet.x - 11));
+      app.onTouchMove(finger(packet.x - 26));
+      check("入场期间逆缩放推出边缘时仍可向左撕开", store.state.anim.tilt < 0 && Math.abs(store.state.anim.p - 0.1) < 0.0001);
+      app.onTouchEnd({ canceled: true });
       store.state.anim = originalTear;
+      app.render(entryAt + 220);
     }
 
     /* 撕开要玩家自己划：没划完不许进环形 */
@@ -379,8 +434,38 @@ const run = async () => {
       check("刚撕通还不能立刻进环形（那条纸还在飘）", store.stage() === "tear", store.stage());
     }
 
+    /* 出卡慢慢抽出并展开：两种渲染器都保持 2200ms，中途失败不改截止时刻。 */
+    {
+      const pagTear = require(resolve(ROOT, "game/js/pag-tear.js"));
+      const originalBegin = pagTear.begin, originalStatus = pagTear.status, savedTear = store.state.anim;
+      const at = Date.now();
+      let mode = "pag";
+      pagTear.begin = () => mode;
+      pagTear.status = () => ({mode, durationMs:2200});
+      const reset = () => { store.state.anim = {...savedTear,kind:"tear",p:1,doneAt:at,tilt:8,tiltFrom:8,tiltAt:at}; };
+      try {
+        reset(); app.render(at + 480);
+        check("PAG 撕开完成段不会在旧 480ms 提前进圈", store.stage() === "tearFinish" && store.state.anim.finishMs === 2200 && packview.busy(store.state));
+        app.render(at + 2199);
+        check("PAG 完成段末帧仍占屏", store.stage() === "tearFinish");
+        app.render(at + 2200);
+        check("PAG 缓慢出卡 2200ms 后自动进入卡圈", store.stage() === "ring");
+        reset(); mode = "fallback"; app.render(at + 479);
+        check("PAG 不可用时 Canvas 仍保持缓慢出卡", store.stage() === "tearFinish" && store.state.anim.finishMode === "fallback" && store.state.anim.finishMs === 2200);
+        app.render(at + 2199);
+        check("Canvas 缓慢出卡末帧仍占屏", store.stage() === "tearFinish");
+        app.render(at + 2200);
+        check("Canvas 与 PAG 在相同 2200ms 完成", store.stage() === "ring");
+        reset(); mode = "pag"; app.render(at + 100);
+        mode = "fallback"; app.render(at + 200);
+        check("PAG 中途失败保留进度和 2200ms 截止时刻", store.stage() === "tearFinish" && store.state.anim.finishMs === 2200);
+        app.render(at + 2200);
+        check("PAG 中途失败也能正常进圈", store.stage() === "ring");
+      } finally { pagTear.begin = originalBegin; pagTear.status = originalStatus; store.state.anim = savedTear; }
+    }
+
     /* 飘完之后进环形 */
-    store.state.anim.doneAt = Date.now() - 2000;
+    store.state.anim.doneAt = Date.now() - 3000;
     app.render();
     check("进入环形阶段", store.stage() === "ring", store.stage());
     ops.length = 0;
@@ -389,6 +474,34 @@ const run = async () => {
     check("环下方显示第 1 / 10 张和正前方牌名",
       ops.some((o) => o[0] === "fillText" && o[1] === "第 1 / 10 张") &&
       ops.some((o) => o[0] === "fillText" && o[1] === store.state.offer[0].name));
+
+    /* 阴影跟随侧转宽度与卡底，径向渐变外沿必须透明。 */
+    {
+      const originals = {radial:ctx.createRadialGradient,scale:ctx.scale,translate:ctx.translate};
+      let position = {}, radii = {};
+      const shadows = [], time = Date.now();
+      ctx.translate = function(x,y) { position = {x,y}; return originals.translate.call(this,x,y); };
+      ctx.scale = function(x,y) { radii = {rx:x,ry:y}; return originals.scale.call(this,x,y); };
+      ctx.createRadialGradient = function(...args) {
+        const g = originals.radial.apply(this,args);
+        if (args.length === 6 && args.every((value,index) => value === (index === 5 ? 1 : 0))) {
+          const sample = {...position,...radii,alpha:this.globalAlpha,stops:[]}; shadows.push(sample);
+          const add = g.addColorStop; g.addColorStop = function(offset,color) { sample.stops.push([offset,color]); return add.call(this,offset,color); };
+        }
+        return g;
+      };
+      try { app.render(time); } finally { ctx.createRadialGradient = originals.radial; ctx.scale = originals.scale; ctx.translate = originals.translate; }
+      const ring = openingPack.ring(store.state.offer.length,store.state.ringSpin,layout.contentTop(vp),time);
+      check("十张卡使用柔和径向投影", shadows.length === ring.length);
+      check("投影宽度跟随侧转压扁且锚在卡底", shadows.every((shadow,i) =>
+        Math.abs(shadow.rx-ring[i].w*ring[i].scale*ring[i].wscale*0.46)<1e-6 &&
+        Math.abs(shadow.y-(ring[i].y+ring[i].h*ring[i].scale/2))<1e-6));
+      check("所有投影都是扁椭圆而非圆黑斑", shadows.every(shadow => shadow.ry/shadow.rx <= 0.240001));
+      check("投影远淡近实并保持透明外沿", shadows.every((shadow,i) =>
+        Math.abs(shadow.alpha-(0.10+ring[i].depth*0.22))<1e-6 &&
+        shadow.stops.some(([offset,color]) => offset === 1 && color === "rgba(0,0,0,0)")));
+      check("投影绘制后恢复画布透明度", ctx.globalAlpha === 1);
+    }
 
     /* 环是一圈立着的牌：十张全在环上，近大远小，正前方的最后画 */
     {
@@ -617,7 +730,7 @@ const run = async () => {
     app.dispatch(pb.x + pb.w / 2, pb.y + pb.h / 2);
     app.dispatch(pb.x + pb.w / 2, pb.y + pb.h / 2);
     await sleep(700);
-    check("重复确认只发一个抽卡请求且只震动一次", drawRequests === beforeDrawRequests + 1 && vibrations.length === beforeConfirmCue + 1 && vibrations[vibrations.length - 1].type === "light", JSON.stringify({ requests: drawRequests - beforeDrawRequests, cues: vibrations.slice(beforeConfirmCue), stage: store.stage(), shifting: store.state.shifting }));
+    check("重复确认只发一个抽卡请求且只震动一次", drawRequests === beforeDrawRequests + 1 && vibrations.length === beforeConfirmCue + 1 && vibrations[vibrations.length - 1].type === "light", JSON.stringify({ requests: drawRequests - beforeDrawRequests, cues: vibrations.slice(beforeConfirmCue), stage: store.stage(), shifting: store.state.shifting, toast: store.state.toast }));
     check(
       "落定的就是选中的那张",
       store.state.draw && store.state.draw.role.id === target,
@@ -639,51 +752,55 @@ const run = async () => {
     check("落定后过场结束", store.stage() === "", store.stage());
   }
 
-  /* 今日卡背：原有任务断言前，加入真实触摸刮开步骤（不改断言）。 */
-  if (store.scratchPending()) {
-    app.render();
-    const scratchRect = layout.todayScratchRect();
-    const packet = (x, y) => ({touches:[{clientX:x,clientY:y}],changedTouches:[{clientX:x,clientY:y}]});
-    for (let fy = 0.04; fy < 1 && store.scratchPending(); fy += 0.095) {
-      const y = layout.contentTop(vp) + scratchRect.y - store.state.scroll + scratchRect.h * fy;
-      if (y >= layout.contentBottom(vp) - 2) {
-        app.onTouchStart(packet(7, layout.contentBottom(vp) - 30));
-        app.onTouchMove(packet(7, layout.contentTop(vp) + 30));
-        app.onTouchEnd(packet(7, layout.contentTop(vp) + 30));
-        app.render();
-        fy -= 0.095; continue;
-      }
-      app.onTouchStart(packet(scratchRect.x + 8, y));
-      app.onTouchMove(packet(scratchRect.x + scratchRect.w - 8, y));
-      app.onTouchEnd(packet(scratchRect.x + scratchRect.w - 8, y));
-      app.render();
-    }
-    check("今日卡背刮开后才解锁任务", !store.scratchPending());
-    store.state.scroll = 0;
-  }
-
-  /* 4. 已抽卡:渲染出角色名与任务 */
+  /* 4. 今日页只有可旋转的双面卡牌，没有记录控件。 */
   ops.length = 0;
   app.render();
   const drawnTexts = ops.filter((o) => o[0] === "fillText").map((o) => o[1]);
-  check("卡面画出角色名", drawnTexts.includes(store.state.draw.role.name), drawnTexts.slice(0, 8).join("|"));
+  check("今日页绘制卡牌与操作提示", ops.some(o=>o[0]==='drawImage') && drawnTexts.includes('拖动旋转 · 轻点翻面'));
   check("任务条数 3-4", store.state.draw.tasks.length >= 3 && store.state.draw.tasks.length <= 4, String(store.state.draw.tasks.length));
-  check("任务文本被绘制", store.state.draw.tasks.some((t) => drawnTexts.includes(t.text.slice(0, 20)) || drawnTexts.some((x) => x && t.text.startsWith(x))), "n/a");
+  const todayZones = view.renderToday(vp,store.state).zones;
+  check("今日页仅有卡牌命中区", todayZones.length===1 && todayZones[0].id==='today-card');
+  check("今日页没有任务、手记或重抽入口", !todayZones.some(z=>['task','note','redraw'].includes(z.id)));
+  check("今日页不滚动", store.state.scrollMax===0);
 
-  /* 5. 命中判定:点第一张任务卡 */
-  const task = store.state.draw.tasks[0];
-  const tRect = layout.todayTaskRect(0);
-  tRect.y += layout.contentTop(vp);
+  /* 5. 真实触摸路由：双轴旋转、完整背面、点击返回正面、取消手势。 */
+  const todayCard = require(resolve(ROOT,'game/js/today-card.js'));
+  const clock = require(resolve(ROOT,'game/js/animation.js'));
+  const cr = todayCard.rect(vp), now = Date.now()+1000;
+  const records = JSON.stringify(store.state.draw);
+  const event = (x,y)=>({touches:[{clientX:x,clientY:y}],changedTouches:[{clientX:x,clientY:y}]});
+  clock.withTime(now,()=>{
+    app.render(now);
+    app.onTouchStart(event(cr.x+30,cr.y+cr.h/2));
+    app.onTouchMove(event(cr.x+cr.w*.85,cr.y+cr.h/2+45));
+    app.render(now);
+    const pose=todayCard.snapshot();
+    check("拖动今日卡同时产生水平透视和垂直倾斜", pose.yaw>1.5 && pose.pitch<0 && pose.dragging);
+    check("旋转用纹理网格绘制", ops.some(o=>o[0]==='transform'));
+    app.onTouchEnd(event(cr.x+cr.w*.85,cr.y+cr.h/2+45));
+  });
+  clock.withTime(now+todayCard.TURN_MS+1,()=>{
+    app.render(now+todayCard.TURN_MS+1);
+    check("松手停在背面，回正后描述便于阅读", todayCard.snapshot().back && todayCard.snapshot().pitch===0 && !todayCard.snapshot().busy);
+    app.onTouchStart(event(cr.x+cr.w/2,cr.y+cr.h/2));
+    app.onTouchEnd(event(cr.x+cr.w/2,cr.y+cr.h/2));
+  });
+  clock.withTime(now+todayCard.TURN_MS*2+2,()=>{
+    app.render(now+todayCard.TURN_MS*2+2);
+    check("轻点背面可翻回正面", !todayCard.snapshot().back && !todayCard.snapshot().busy);
+    app.onTouchStart(event(cr.x+cr.w/2,cr.y+cr.h/2));
+    app.onTouchMove(event(cr.x+cr.w/2+20,cr.y+cr.h/2+30));
+    app.onTouchEnd({canceled:true});
+    check("取消触摸释放卡牌手势", !todayCard.snapshot().dragging);
+  });
+  check("卡牌操作不修改抽卡、任务或手记记录", JSON.stringify(store.state.draw)===records);
 
-  const before = task.done;
-  app.dispatch(tRect.x + 30, tRect.y + tRect.h / 2);
-  await sleep(400);
-  check("点任务卡能切换勾选", task.done === !before, "before=" + before + " after=" + task.done);
-
-  /* 6. 再点回来,避免污染 */
-  app.dispatch(tRect.x + 30, tRect.y + tRect.h / 2);
-  await sleep(400);
-  check("再点可还原", task.done === before, "done=" + task.done);
+  /* 6. 保留服务端任务接口的回归检查，不在卡牌上提供记录控件。 */
+  const task=store.state.draw.tasks[0], before=task.done;
+  await store.toggleTask(task.id);
+  check("任务接口仍可切换勾选", task.done===!before);
+  await store.toggleTask(task.id);
+  check("任务接口再调可还原", task.done===before);
 
   /* 7. tab 切换 */
   const tabs = view.tabbarRects(vp);
@@ -700,6 +817,52 @@ const run = async () => {
   check("切 tab 后内容从 0.96 淡入且导航仍可点击",
     ops.some((o) => o[0] === "scale" && o[1] === 0.96) &&
     ops.some((o) => o[0] === "fillText" && o[1] === "日历" && o[4] === 1));
+
+  /* 7b. 卡牌日历：无任务统计，点日期放大，可旋转并关闭回原格子。 */
+  const historyCard=require(resolve(ROOT,'game/js/calendar-card.js'));
+  const calendarAt=Date.now()+1000;
+  const calendarBefore=JSON.stringify(store.state.calendar.cells);
+  const drawBefore=JSON.stringify(store.state.draw);
+  clock.withTime(calendarAt,()=>{
+    ops.length=0;app.render(calendarAt);
+    const texts=ops.filter(o=>o[0]==='fillText').map(o=>o[1]);
+    check('日历不显示连续天数和任务统计',!texts.some(t=>/连续|任务|已完成/.test(t)));
+    const monthZones=view.renderCalendar(vp,store.state).zones;
+    const dayZone=monthZones.find(z=>z.id==='day');
+    check('有卡的日期是可查看的竖版小卡',Boolean(dayZone) && Math.abs(dayZone.sourceRect.h/dayZone.sourceRect.w-1.5)<.001);
+    check('空白日期没有查看命中区',monthZones.filter(z=>z.id==='day').every(z=>Boolean(z.entry)));
+    if(!dayZone) throw Error('Expected a recorded calendar day');
+    app.dispatch(dayZone.rect.x+dayZone.rect.w/2,dayZone.rect.y+dayZone.rect.h/2);
+    app.render(calendarAt);
+    check('点日期进入独立卡牌查看',historyCard.active() && !store.state.selected && historyCard.snapshot().date===dayZone.date);
+    check('放大开始时保留原日期卡位置',historyCard.render(vp).find(z=>z.id==='calendar-card').rect.w<dayZone.sourceRect.w+25);
+  });
+  clock.withTime(calendarAt+historyCard.OPEN_MS+1,()=>{
+    app.render(calendarAt+historyCard.OPEN_MS+1);
+    const r=historyCard.rect(vp),cx=r.x+r.w/2,cy=r.y+r.h/2;
+    check('放大完成后停止过渡帧',!historyCard.busy(vp));
+    app.onTouchStart(event(cx-r.w*.30,cy));
+    app.onTouchMove(event(cx+r.w*.35,cy+30));
+    check('历史卡支持双轴旋转',historyCard.snapshot().yaw>1.5 && historyCard.snapshot().pitch<0);
+    app.onTouchEnd(event(cx+r.w*.35,cy+30));
+  });
+  clock.withTime(calendarAt+historyCard.OPEN_MS+todayCard.TURN_MS+2,()=>{
+    ops.length=0;app.render(calendarAt+historyCard.OPEN_MS+todayCard.TURN_MS+2);
+    check('历史卡背面显示角色描述而非任务记录',historyCard.snapshot().back && ops.some(o=>o[0]==='fillText' && o[1]==='角色描述'));
+    const close=historyCard.render(vp).find(z=>z.id==='calendar-card-close').rect;
+    app.dispatch(close.x+close.w/2,close.y+close.h/2);
+    check('关闭启动缩回动画',historyCard.snapshot().closing && historyCard.busy(vp));
+  });
+  clock.withTime(calendarAt+historyCard.OPEN_MS+todayCard.TURN_MS+historyCard.CLOSE_MS+3,()=>{
+    app.render(calendarAt+historyCard.OPEN_MS+todayCard.TURN_MS+historyCard.CLOSE_MS+3);
+    check('缩回完成释放历史卡和动作',!historyCard.active() && !historyCard.snapshot().busy);
+  });
+  check('回看不会修改今日抽卡或历史日期',JSON.stringify(store.state.draw)===drawBefore && JSON.stringify(store.state.calendar.cells)===calendarBefore);
+  const smallVp={...vp,height:620};
+  const sixRows=Array.from({length:42},(_,i)=>({type:'day',day:i%28+1,date:'2026-11-'+String(i%28+1).padStart(2,'0'),entry:store.state.calendar.cells.find(c=>c.entry).entry}));
+  const smallState={...store.state,calendar:{...store.state.calendar,cells:sixRows},scroll:180};
+  const smallGrid=view.renderCalendar(smallVp,smallState);
+  check('六行月份在小屏可滚动且日期命中不穿过导航',smallGrid.contentH>layout.contentH(smallVp) && smallGrid.zones.filter(z=>z.id==='day').every(z=>z.rect.y>=layout.contentTop(smallVp)+layout.calendarGridTop()-4 && z.rect.y+z.rect.h<=layout.contentBottom(smallVp)-32));
 
   /* 8. 上一月 */
   const m0 = store.state.calendar.month;
@@ -740,10 +903,6 @@ const run = async () => {
   app.dispatch(tabs[0].x + 10, tabs[0].y + 10);
   check("切回今日", store.state.tab === "today");
 
-  // Start the entry before waiting; this harness has no automatic RAF paint.
-  app.render();
-  await sleep(300);
-
   /* 11. 重新抽卡（测试环境的临时口子）：作废今天的卡，重新发一包 */
   if (store.state.canRedraw) {
     ops.length = 0;
@@ -753,13 +912,13 @@ const run = async () => {
     const rb = layout.redrawButtonRect(tasksN);
     rb.y += layout.contentTop(vp) - store.state.scroll;
 
-    check("按钮文字画出来了", ops.some((o) => o[0] === "fillText" && o[1] === "重新抽一次"), "");
+    check("极简今日页不显示重新抽卡按钮", !ops.some((o) => o[0] === "fillText" && o[1] === "重新抽一次"), "");
     const foot = layout.todayFootRect(tasksN);
     check("按钮排在页脚下方", rb.y > layout.contentTop(vp) + foot.y + foot.h, rb.y + " vs " + (layout.contentTop(vp) + foot.y + foot.h));
     check("按钮内容高度把按钮算进去了", layout.todayContentHWithRedraw(tasksN, true) > layout.todayContentH(tasksN), "");
     check("不开重抽时高度不变", layout.todayContentHWithRedraw(tasksN, false) === layout.todayContentH(tasksN), "");
 
-    app.dispatch(rb.x + rb.w / 2, rb.y + rb.h / 2);
+    await store.redrawToday();
     await sleep(1500);
     check("重抽后回到未落定", !store.state.draw, "draw=" + Boolean(store.state.draw));
     check("重抽后重新摊开十张", store.state.offer.length === 10, String(store.state.offer.length));
@@ -771,6 +930,8 @@ const run = async () => {
     store.swipeTear(require(resolve(ROOT, "game/js/pack.js")).TEAR_SWIPE * 2);
     store.state.anim.doneAt = Date.now() - 2000;
     app.render();
+    // Wait for the actual new extraction duration before selecting, without changing assertions.
+    app.render(store.state.anim.doneAt + store.state.anim.finishMs + 20);
     const ids = store.state.offer.slice(0, 3).map((o) => o.id);
     ids.forEach((id) => store.flipCard(id));
     store.state.anim.at = Date.now() - 2000;

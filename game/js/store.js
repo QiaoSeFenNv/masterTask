@@ -26,7 +26,7 @@ var state = {
   slot: "", // 从这 3 张里选中的那张，落定用
   shifting: false, // 落定进行中
   canRedraw: false, // 服务端是否允许重新抽卡（测试环境才有）
-  anim: { kind: "", at: 0, series: "" }, // 过场：pack(选卡包) | tear(撕开) | ring(环形) | top(飞上方) | pick(选一张) | reveal(揭晓)
+  anim: { kind: "", at: 0, series: "" }, // 过场：pack(选卡包) | opening(就位) | tear(撕开) | tearFinish(完成) | ring(环形) | top(飞上方) | pick(选一张) | reveal(揭晓)
   stats: { streak: 0, totalDays: 0, totalTasks: 0, doneTasks: 0, completionRate: 0, collected: [] },
   shuffling: false,
   noteDraft: "",
@@ -163,20 +163,26 @@ function chooseSeries(seriesId) {
 function enterTear() {
   var a = state.anim;
   if (!a || a.kind !== "opening") return;
-  state.anim = {kind:"tear",at:a.at+pack.OPEN_MS,series:a.series,p:0,doneAt:0,recoilAt:0,tilt:0,tiltAt:0};
+  state.anim = {kind:"tear",at:a.at+pack.OPEN_MS,series:a.series,p:0,doneAt:0,recoilAt:0,tilt:0,tiltAt:0,tearDirection:1};
   emit();
 }
 
 /**
- * 沿包口横向划：撕口位置严格跟着手指走。
- * dx 是这一小段横向位移（设计稿单位），累计到整条包口宽就算撕通。
+ * 划动距离推进封口剥离，起手位置和划动方向都不受撕线限制。
+ * dx 是这一小段实际划动距离（设计稿单位），原 TEAR_SWIPE 阈值不变。
  */
-function swipeTear(dx) {
+function swipeTear(dx,direction) {
   var a = state.anim;
   if (!a || a.kind !== "tear" || a.doneAt) return;
   a.recoilAt = 0; // 手又动了，取消回弹
   a.p = pack.clamp01((a.p || 0) + dx / pack.TEAR_SWIPE);
-  if (a.p >= 1) {
+  // 左划向左倾斜，其余划动保持原来的拉扯倾角，幅度与回正时长不变。
+  if (dx > 0) {
+    a.tearDirection = direction === -1 ? -1 : 1;
+    a.tilt = a.p * 8 * a.tearDirection; a.tiltAt = 0;
+  }
+  // 像素换算的浮点误差不能挡住刚好划满原距离的手势。
+  if (a.p >= 1 - 1e-9) {
     a.p = 1;
     a.doneAt = animation.now(); // 撕通了，那一条开始飘走
     returnTearTilt(a);
@@ -218,7 +224,7 @@ function releaseTear() {
 /** 回弹缓动，由 app 每帧推一次；真的在动就返回 true（要连续出帧） */
 function tickTear(tms) {
   var a = state.anim;
-  if (!a || a.kind !== "tear") return false;
+  if (!a || (a.kind !== "tear" && a.kind !== "tearFinish")) return false;
   var moving = false;
   if (a.recoilAt) {
     var t = animation.progress(a.recoilAt, 260, tms);
@@ -234,9 +240,25 @@ function tickTear(tms) {
   return moving;
 }
 
-/** 撕开动画飘完之后进环形；由 app 在帧里推进时调用 */
+/** 撕通后锁定本次渲染器；慢到的 PAG 不能把 Canvas 完成段切走。 */
+function enterTearFinish(mode, durationMs) {
+  var a = state.anim;
+  if (!a || a.kind !== "tear" || !a.doneAt) return;
+  var pag = mode === "pag" && typeof durationMs === "number" && isFinite(durationMs) && durationMs > 0;
+  state.anim = Object.assign({}, a, {kind:"tearFinish",finishMode:pag ? "pag" : "fallback",
+    finishMs:pag ? durationMs : require("./tear-flight.js").DURATION_MS});
+  emit();
+}
+function fallbackTearFinish() {
+  var a = state.anim;
+  if (!a || a.kind !== "tearFinish" || a.finishMode !== "pag") return;
+  a.finishMode = "fallback"; // Keep the same deadline and extraction progress on renderer failure.
+  emit();
+}
+
+/** 撕开完成段播放结束后进环形；由 app 在统一时钟里推进。 */
 function enterRing() {
-  if (state.anim.kind !== "tear") return;
+  if (state.anim.kind !== "tear" && state.anim.kind !== "tearFinish") return;
   if (!state.anim.doneAt) return; // 还没撕通，不许进去
   state.anim = { kind: "ring", at: animation.now(), series: state.anim.series };
   state.ringSpin = 0;
@@ -403,7 +425,7 @@ function pickedRoles() {
 }
 
 function toggleTask(taskId) {
-  if (!state.draw || scratchPending()) return;
+  if (!state.draw) return;
   var t = null;
   for (var i = 0; i < state.draw.tasks.length; i++) {
     if (state.draw.tasks[i].id === taskId) t = state.draw.tasks[i];
@@ -445,7 +467,7 @@ function setNoteDraft(text) {
 }
 
 function saveNote() {
-  if (!state.draw || scratchPending()) return Promise.resolve();
+  if (!state.draw) return Promise.resolve();
   var tasks = state.draw.tasks;
   var target = null;
   for (var i = 0; i < tasks.length; i++) {
@@ -635,6 +657,8 @@ module.exports = {
   tiltTear: tiltTear,
   releaseTear: releaseTear,
   tickTear: tickTear,
+  enterTearFinish: enterTearFinish,
+  fallbackTearFinish: fallbackTearFinish,
   enterRing: enterRing,
   rotateRing: rotateRing,
   flipCard: flipCard,

@@ -221,25 +221,19 @@ function pickIndex(list, id) {
 var CAL_COLS = 7;
 
 function calendarGridTop() {
-  return 76;
+  return 80;
 }
 
+/** Miniature role cards use the same 2:3 silhouette as the full card. */
 function calendarCellRect(i) {
-  var cellW = innerW() / CAL_COLS;
-  var row = Math.floor(i / CAL_COLS);
-  var col = i % CAL_COLS;
-  return {
-    x: PAD + col * cellW + 2,
-    y: calendarGridTop() + row * (cellW + 6) + 2,
-    w: cellW - 4,
-    h: cellW - 4,
-    r: 8,
-  };
+  var cellW=innerW()/CAL_COLS, w=cellW-8, h=w*1.5;
+  return {x:PAD+(i%CAL_COLS)*cellW+4,
+    y:calendarGridTop()+Math.floor(i/CAL_COLS)*(h+14),w:w,h:h,r:4};
 }
 
 function calendarContentH(rows) {
-  var cellW = innerW() / CAL_COLS;
-  return calendarGridTop() + rows * (cellW + 6) + 20;
+  var h=(innerW()/CAL_COLS-8)*1.5;
+  return calendarGridTop()+rows*(h+14)+32;
 }
 
 /* ---------------- 图鉴 ---------------- */

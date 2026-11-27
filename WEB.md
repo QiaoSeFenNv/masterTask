@@ -1,10 +1,10 @@
 # Web 体验预览
 
-浏览器版复用 game/ 的 Canvas 界面、卡包图片、角色数据与 PAG 揭晓。体验者可以用鼠标或手指完成选包、撕包、转盘选三张、确认角色，再查看任务、日历和图鉴。
+浏览器版复用 game/ 的 Canvas 界面、卡包图片、角色数据与 PAG 揭晓。体验者可以用鼠标或手指完成选包、撕包、转盘选三张、确认角色，再操作今日整张 3D 双面卡牌、卡牌日历和油画图鉴。最新主线与整合验收见 [LATEST-PAGES.md](LATEST-PAGES.md)。
 
 ## 本地启动
 
-运行环境为 Node 22.5+，当前验证为 Node 24。
+运行环境为 Node 24，当前验证为 Node 24.15.0。
 
 ```powershell
 npm run web:dev
@@ -23,7 +23,7 @@ WEB_PREVIEW_PORT 可修改端口，WEB_PREVIEW_HOST 可修改监听地址；默�
 
 ## 分享预览
 
-当前临时地址（2026-11-24）：[打开 Web 预览](https://screenshot-fruits-tape-recommendation.trycloudflare.com)。
+当前临时地址（2026-11-27）：[打开最新 3D 页面预览](https://gmc-attempting-traveling-brands.trycloudflare.com)。
 
 其他人可以直接打开体验，记录保存在各自的浏览器中。“复制链接”可复制当前地址，“重新体验”清空当前浏览器的演示记录并回到选包。
 
@@ -43,12 +43,13 @@ WEB_PREVIEW_PORT 可修改端口，WEB_PREVIEW_HOST 可修改监听地址；默�
 
 ```powershell
 npm run test:web
+npm run test:pages
 npm run test:animation
 npm run test:pag
 ```
 
 首次运行浏览器验证需 npm ci，并使用已安装的 Chromium / Edge / Chrome，也可通过 PAG_BROWSER 指定可执行文件。test:web 自动构建并启动隔离的静态服务器，不需要后端。
 
-浏览器验证使用真实鼠标与 Chromium 触摸输入，检查选包过渡、跟手撕包、转盘选卡、PAG 揭晓、早期点击保护、继续和自动结束、任务与手记保存、日历和图鉴、手机尺寸变化、访客数据隔离、重新体验及运行时回退。为核对过渡中的画面，测试使用可控时间轴；这不代表物理设备的帧率测试。
+浏览器验证使用真实鼠标与 Chromium 触摸输入，检查选包过渡、跟手撕包、转盘选卡、PAG 揭晓、早期点击保护、继续和自动结束、今日 3D 卡牌与历史卡的鼠标/触摸/键盘旋转翻面、卡牌日历和油画图鉴、手机尺寸变化、访客数据隔离、重新体验及运行时回退。为核对过渡中的画面，测试使用可控时间轴；这不代表物理设备的帧率测试。
 
 截图与验证报告在 tools/.web-preview/；设计与验收范围见 [web/DESIGN.md](web/DESIGN.md)。

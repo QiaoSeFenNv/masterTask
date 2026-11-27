@@ -7,6 +7,13 @@
       "sourceType": "github",
       "skillPath": "skills/cloudbase/SKILL.md",
       "computedHash": "34a4af7504480d39765ddff575421de7ddc69e6b5353ff988e6abb263b4bfa7b"
+    },
+    "modern-web-guidance": {
+      "source": "GoogleChrome/modern-web-guidance",
+      "commit": "2b4aa13a72dd47cd135b06ce5abfccd92e19b24f",
+      "sourceType": "github",
+      "skillPath": "skills/modern-web-guidance/SKILL.md",
+      "computedHash": "1a97aea5d1c5abbf1b7b022ae7a2833a014627f741ba3cbd8cb6249a3ab359db"
     }
   }
 }

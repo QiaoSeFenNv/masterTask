@@ -1,4 +1,6 @@
-# 合并验证结果
+# 合并验证结果（历史刮卡页面）
+
+> 本报告记录旧布局。当前主线已改为整张 3D 今日卡牌与卡牌日历；最新页面、整合来源和验收见 [LATEST-PAGES.md](../../LATEST-PAGES.md)。
 
 2026-11-27，本地 Node 24.15.0 + Chromium。
 将 master 的 `31d134c` 合并到 `animation-polish`，保留另一分支 `e4feefe` 的入场、撕包、音效与轻震动。
