@@ -585,7 +585,7 @@ function renderPick(vp, state) {
       size: 11.5,
       color: theme.gold,
     });
-    draw.wrapText(sel.intro || "", box.x + 16, box.y + 44, box.w - 32, 18, {
+    draw.wrapText("完整介绍与今日任务，选定后到今日页亲手刮开。", box.x + 16, box.y + 44, box.w - 32, 18, {
       size: 12,
       color: theme.body,
       maxLines: 2,

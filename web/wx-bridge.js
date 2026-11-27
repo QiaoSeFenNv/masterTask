@@ -58,9 +58,9 @@ export function installWechatBridge({canvas, surface, api, modal}) {
     const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? surface.clientHeight : 1;
     const distance = Math.max(-240, Math.min(240, event.deltaY * unit));
     if (!distance) return;
-    emit('start', packet(start));
-    emit('move', packet({...start, clientY: start.clientY - distance}));
-    emit('end', packet({...start, clientY: start.clientY - distance}, true));
+    emit('start', {...packet(start), scrollOnly: true});
+    emit('move', {...packet({...start, clientY: start.clientY - distance}), scrollOnly: true});
+    emit('end', {...packet({...start, clientY: start.clientY - distance}, true), scrollOnly: true});
   }, {passive: false});
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && activePointer !== null) {

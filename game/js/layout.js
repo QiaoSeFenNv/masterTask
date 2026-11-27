@@ -96,10 +96,16 @@ function todayCardRect() {
   return { x: PAD, y: 0, w: cardW(), h: FACE_H, r: 22 };
 }
 
+function todayScratchRect() {
+  return { x: PAD, y: FACE_H + 56, w: cardW(), h: 340, r: 16 };
+}
+function todayScratchContentH() { return todayScratchRect().y + todayScratchRect().h + 76; }
+function todayIntroRect() { return {x:PAD, y:FACE_H + 24, w:cardW(), h:86, r:14}; }
+
 function todayTaskRect(i) {
   return {
     x: PAD,
-    y: FACE_H + 30 + i * (TASK_H + TASK_GAP),
+    y: FACE_H + 124 + i * (TASK_H + TASK_GAP),
     w: cardW(),
     h: TASK_H,
     r: 14,
@@ -107,7 +113,7 @@ function todayTaskRect(i) {
 }
 
 function todayNoteRect(taskCount) {
-  var y = FACE_H + 30 + taskCount * (TASK_H + TASK_GAP) + 12;
+  var y = FACE_H + 124 + taskCount * (TASK_H + TASK_GAP) + 12;
   return { x: PAD, y: y, w: cardW(), h: NOTE_H, r: 16 };
 }
 
@@ -246,9 +252,9 @@ function collectionCardRect(i) {
   var col = i % 2;
   return {
     x: PAD + col * (w + COL_GAP),
-    y: 56 + row * (w * 1.28 + COL_GAP),
+    y: 56 + row * (w * 1.5 + COL_GAP),
     w: w,
-    h: w * 1.28,
+    h: w * 1.5,
     r: 14,
   };
 }
@@ -256,7 +262,7 @@ function collectionCardRect(i) {
 function collectionContentH(count) {
   var w = (innerW() - COL_GAP) / 2;
   var rows = Math.ceil(count / 2);
-  return 56 + rows * (w * 1.28 + COL_GAP) + 20;
+  return 56 + rows * (w * 1.5 + COL_GAP) + 20;
 }
 
 /* ---------------- 详情弹层 ---------------- */
@@ -299,6 +305,9 @@ module.exports = {
   cardW: cardW,
   todayCardRect: todayCardRect,
   todayTaskRect: todayTaskRect,
+  todayIntroRect: todayIntroRect,
+  todayScratchRect: todayScratchRect,
+  todayScratchContentH: todayScratchContentH,
   todayNoteRect: todayNoteRect,
   todayFootRect: todayFootRect,
   todayContentH: todayContentH,

@@ -141,12 +141,12 @@ function paint() {
   }
 
   // 揭晓淡出时露出的任务内容仍限制在内容区，不能穿过底部导航。
-  if (packStage === "reveal") draw.clipRect(0, layout.contentTop(v), v.width, layout.contentH(v));
+  if (st.tab === "today") draw.clipRect(0, layout.contentTop(v), v.width, layout.contentH(v));
   var result;
   if (st.tab === "today") result = view.renderToday(v, st);
   else if (st.tab === "calendar") result = view.renderCalendar(v, st);
   else result = view.renderCollection(v, st);
-  if (packStage === "reveal") draw.restore();
+  if (st.tab === "today") draw.restore();
 
   var list = (result && result.zones) || [];
   var contentH = (result && result.contentH) || layout.contentH(v);
@@ -228,6 +228,11 @@ function onTouchStart(e) {
     moved: false,
     turned: false,
   };
+  var zone = topZoneAt(p.x, p.y);
+  if (!e.scrollOnly && !store.state.selected && store.state.status === "ready" && zone && zone.id === "scratch" && store.scratchPending()) {
+    drag.scratch = {key:store.state.scratch.key, cover:zone.cover, prev:p};
+    store.scratchStroke({x:p.x-zone.cover.x,y:p.y-zone.cover.y}, {x:p.x-zone.cover.x,y:p.y-zone.cover.y});
+  }
 }
 
 /** 环形阶段：横向拖动 = 转动转盘 */
@@ -255,6 +260,16 @@ function onTouchMove(e) {
   var dy = p.y - drag.startY;
   drag.lastX = p.x;
   drag.lastY = p.y;
+
+  if (drag.scratch) {
+    var gesture = drag.scratch;
+    if (store.state.scratch && store.state.scratch.key === gesture.key) {
+      store.scratchStroke({x:gesture.prev.x-gesture.cover.x,y:gesture.prev.y-gesture.cover.y},
+        {x:p.x-gesture.cover.x,y:p.y-gesture.cover.y});
+    }
+    gesture.prev = p; drag.moved = true;
+    return; // Even after auto-unlock, do not turn the remainder into scrolling/taps.
+  }
 
   // 撕包口：只认往右的那一小段位移，撕口严格跟着手指走
   if (tearDragging(store.state)) {
@@ -292,6 +307,9 @@ function onTouchMove(e) {
 
 function onTouchEnd(e) {
   if (!drag) return;
+  if (drag.scratch) {
+    store.saveScratch(); drag = null; requestFrame(); return;
+  }
   if (e && e.canceled) {
     var wasTearing = tearDragging(store.state);
     drag = null;
@@ -434,6 +452,7 @@ function dispatch(x, y) {
  * showModal 的 editable 从基础库 2.17.1 起支持;更老的版本退回 showKeyboard。
  */
 function openKeyboard() {
+  if (store.scratchPending()) return;
   var w = env.getWx();
   if (!w) return;
 
@@ -514,7 +533,7 @@ function boot() {
   var runtime = w && typeof w.createCanvas === "function" ? w.createCanvas() : null;
   if (runtime) setCanvas(runtime);
 
-  if (w && typeof w.onHide === "function") w.onHide(function () { frameLoop.pause(); pagReveal.pause(); });
+  if (w && typeof w.onHide === "function") w.onHide(function () { store.saveScratch(); drag = null; frameLoop.pause(); pagReveal.pause(); });
   if (w && typeof w.onShow === "function") w.onShow(function () { pagReveal.resume(); frameLoop.resume(); });
 
   if (w && typeof w.onTouchStart === "function") {

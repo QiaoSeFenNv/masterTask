@@ -55,8 +55,9 @@ export function requireGame(requested, parent = '') {
   await fs.writeFile(path.join(OUTPUT, 'game.bundle.js'), bundle);
   for (const name of ['index.html', 'style.css', 'main.js', 'preview-api.js', 'wx-bridge.js', 'favicon.svg'])
     await fs.copyFile(path.join(WEB, name), path.join(OUTPUT, name));
-  for (const series of ['deep', 'dusk', 'dawn']) for (const kind of ['pack', 'bg']) {
-    const name = kind + '-' + series + '.jpg';
+  // Copy the same registered image inventory as the game, including role portraits.
+  const imageFiles = Object.values(require('../game/js/assets.js').FILES);
+  for (const name of new Set(imageFiles)) {
     await fs.copyFile(path.join(ROOT, 'game/assets', name), path.join(OUTPUT, 'assets', name));
   }
   await fs.writeFile(path.join(OUTPUT, 'vendor/pag/libpag.wasm'),

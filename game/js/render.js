@@ -8,6 +8,8 @@ var layout = require("./layout.js");
 var animation = require("./animation.js");
 var theme = require("./theme.js");
 var env = require("./env.js");
+var roleArt = require("./role-art.js");
+var scratchView = require("./scratch-view.js");
 
 var W = layout.W;
 var PAD = layout.PAD;
@@ -214,48 +216,61 @@ function renderDrawn(vp, state, y) {
   var card = layout.todayCardRect();
   card.y = y;
 
+  roleArt.paint(card, role, { caption: false });
   draw.clipRoundRect(card.x, card.y, card.w, card.h, card.r);
-  gradientFill(card, role.gradient || [theme.packTop, theme.packBottom], 150, 0);
-  draw.getCtx().globalAlpha = 0.16;
-  gradientFill(
-    { x: card.x, y: card.y, w: card.w, h: card.h * 0.5 },
-    ["#ffffff", role.gradient ? role.gradient[0] : theme.packTop],
-    180,
-    0,
-  );
-  draw.getCtx().globalAlpha = 1;
+  gradientFill(card, ["rgba(0,0,0,0)", "rgba(0,0,0,0.78)"], 90, 0);
+  draw.text(role.name || "", card.x + card.w / 2, card.y + card.h - 48, {
+    size: 30, weight: "600", serif: true, color: "#fff", align: "center",
+    shadow: { color: "rgba(0,0,0,0.45)", blur: 8, y: 1 },
+  });
+  draw.text(role.tagline || "", card.x + card.w / 2, card.y + card.h - 23, {
+    size: 12, color: "rgba(255,255,255,0.88)", align: "center",
+  });
   draw.restore();
 
-  /* 角标 */
-  var cn = 26;
-  stroke(
-    { x: card.x + 14, y: card.y + 14, w: cn, h: cn },
-    "rgba(255,255,255,0.32)",
-    2,
-    1,
-  );
-  stroke(
-    { x: card.x + card.w - 14 - cn, y: card.y + card.h - 14 - cn, w: cn, h: cn },
-    "rgba(255,255,255,0.32)",
-    2,
-    1,
-  );
-
-  draw.text(role.emoji || "🎴", card.x + card.w / 2, card.y + 78, {
-    size: 58,
-    align: "center",
+  if (state.scratch && !state.scratch.complete) {
+    var cover = layout.todayScratchRect(); cover.y += y;
+    draw.text("刮开卡背，发现今天的任务", PAD, cover.y - 20, {size:12, color:theme.gold});
+    draw.text(Math.floor(state.scratch.progress * 100) + "%", W - PAD, cover.y - 20, {
+      size:11, color:theme.muted, align:"right",
+    });
+    draw.clipRoundRect(cover.x, cover.y, cover.w, cover.h, cover.r);
+    fill(cover, theme.sheetFill, cover.r);
+    draw.wrapText(role.intro || "", cover.x + 18, cover.y + 30, cover.w - 36, 18, {
+      size:12.5, color:theme.body, maxLines:3,
+    });
+    d.tasks.forEach(function (task, i) {
+      var ty = cover.y + 98 + i * 57;
+      draw.text(String(i + 1).padStart(2, "0"), cover.x + 18, ty + 4, {size:11, color:theme.gold});
+      draw.wrapText(task.text, cover.x + 46, ty + 4, cover.w - 64, 17, {
+        size:12, color:theme.taskText, maxLines:2,
+      });
+    });
+    scratchView.paint(cover, role, state.scratch);
+    draw.restore();
+    stroke(cover, theme.frame, cover.r, 1);
+    draw.text("按住背景来回刮动 · 卡片外可上下滑动", W / 2, cover.y + cover.h + 24, {
+      size:10.5, color:theme.muted, align:"center",
+    });
+    var clippedTop = Math.max(cover.y, layout.contentTop(vp));
+    var clippedBottom = Math.min(cover.y + cover.h, layout.contentBottom(vp));
+    if (clippedBottom > clippedTop) zones.push({id:"scratch", cover:cover,
+      rect:{x:cover.x,y:clippedTop,w:cover.w,h:clippedBottom-clippedTop}, radius:cover.r});
+    // The development redraw control remains available without unlocking hidden tasks.
+    if (state.canRedraw) {
+      var reset = {x:(W-132)/2,y:cover.y+cover.h+36,w:132,h:36,r:18};
+      fill(reset, theme.idleBtn, reset.r); stroke(reset, theme.frame, reset.r, 1);
+      draw.text(state.shifting ? "重新发牌中…" : "重新抽一次", W/2, reset.y+23, {size:12,color:theme.gold,align:"center"});
+      if (!state.shifting) zones.push({id:"redraw",rect:reset,radius:reset.r});
+    }
+    return {zones:zones,contentH:layout.todayScratchContentH() + (state.canRedraw ? 20 : 0)};
+  }
+  scratchView.release();
+  var intro = layout.todayIntroRect(); intro.y += y;
+  fill(intro, theme.softFill, intro.r);
+  draw.wrapText(role.intro || "", intro.x + 16, intro.y + 24, intro.w - 32, 18, {
+    size:12.5, color:theme.body, maxLines:3,
   });
-  draw.text(role.name || "", card.x + card.w / 2, card.y + 136, {
-    size: 40,
-    weight: "600",
-    serif: true,
-    color: "#ffffff",
-    align: "center",
-    shadow: { color: "rgba(0,0,0,0.35)", blur: 10, y: 2 },
-  });
-  draw.fillRect(card.x + card.w / 2 - 20, card.y + 152, 40, 1, role.accent || theme.gold);
-
-  zones.push({ id: "card", rect: card, radius: card.r });
 
   /* 任务 */
   d.tasks.forEach(function (t, i) {
@@ -527,28 +542,13 @@ function renderCollection(vp, state) {
     var b = layout.collectionCardRect(i);
     var r = { x: b.x, y: top + b.y - (state.scroll || 0), w: b.w, h: b.h, r: b.r };
 
+    // Do not decode offscreen/locked portraits; scroll clipping also bounds hit zones.
+    if (r.y + r.h <= listTop || r.y >= listBottom) return;
     if (card.owned) {
-      gradientFill(r, card.gradient, 150, r.r);
-      draw.text(card.emoji, r.x + r.w / 2, r.y + r.h * 0.45, {
-        size: 34,
-        align: "center",
-      });
-      draw.text(card.name, r.x + r.w / 2, r.y + r.h * 0.7, {
-        size: 15,
-        weight: "600",
-        serif: true,
-        color: "#ffffff",
-        align: "center",
-        shadow: { color: "rgba(0,0,0,0.35)", blur: 8, y: 1 },
-      });
-      draw.text(card.times + " 次", r.x + r.w / 2, r.y + r.h * 0.84, {
-        size: 10,
-        color: "rgba(255,255,255,0.75)",
-        align: "center",
-      });
+      roleArt.paint(r, card);
     } else {
       fill(r, theme.lockedFill, r.r);
-      stroke(r, theme.softBorder, 1);
+      stroke(r, theme.softBorder, r.r, 1);
       draw.text("?", r.x + r.w / 2, r.y + r.h * 0.48, {
         size: 30,
         serif: true,
@@ -595,34 +595,56 @@ function renderSheet(vp, state) {
   );
   draw.fillRect(0, sheet.y, W, 1, theme.frame);
 
-  draw.text(sel.emoji || "", sheet.x + PAD, sheet.y + 56, { size: 30 });
-  draw.text(sel.name || "", sheet.x + PAD + 44, sheet.y + 46, {
-    size: 20,
-    weight: "600",
-    serif: true,
-    color: theme.text,
-  });
-  draw.text(sel.tagline || "", sheet.x + PAD + 44, sheet.y + 66, {
-    size: 11,
-    color: theme.muted,
-  });
-
-  draw.wrapText(sel.intro || "", sheet.x + PAD, sheet.y + 100, sheet.w - PAD * 2, 19, {
-    size: 12.5,
-    color: theme.body,
-    maxLines: 5,
-  });
-
-  if (sel.taskCount) {
-    draw.text("共 " + sel.taskCount + " 条任务 · 被抽到 " + sel.times + " 次", sheet.x + PAD, sheet.y + 176, {
-      size: 11,
-      color: theme.faint,
+  if (sel.id) {
+    var portrait = { x: PAD, y: sheet.y + 24, w: 84, h: 126, r: 10 };
+    roleArt.paint(portrait, sel, { caption: false });
+    var textX = PAD + portrait.w + 18;
+    var textW = W - PAD - textX;
+    draw.text(sel.name || "", textX, sheet.y + 52, {
+      size: 22, weight: "600", serif: true, color: theme.text,
     });
-  } else if (sel.roleId) {
-    draw.text("这一天的角色", sheet.x + PAD, sheet.y + 100, {
-      size: 12,
+    draw.wrapText(sel.tagline || "", textX, sheet.y + 78, textW, 18, {
+      size: 12, color: theme.muted, maxLines: 2,
+    });
+    draw.text("共 " + sel.taskCount + " 条角色任务", textX, sheet.y + 122, {
+      size: 11, color: theme.body,
+    });
+    draw.text("累计抽到 " + sel.times + " 次", textX, sheet.y + 143, {
+      size: 11, color: theme.muted,
+    });
+    draw.wrapText(sel.intro || "", PAD, sheet.y + 180, W - PAD * 2, 19, {
+      size: 12.5, color: theme.body, maxLines: 3,
+    });
+  } else {
+    draw.text(sel.emoji || "", sheet.x + PAD, sheet.y + 56, { size: 30 });
+    draw.text(sel.name || "", sheet.x + PAD + 44, sheet.y + 46, {
+      size: 20,
+      weight: "600",
+      serif: true,
+      color: theme.text,
+    });
+    draw.text(sel.tagline || "", sheet.x + PAD + 44, sheet.y + 66, {
+      size: 11,
       color: theme.muted,
     });
+
+    draw.wrapText(sel.intro || "", sheet.x + PAD, sheet.y + 100, sheet.w - PAD * 2, 19, {
+      size: 12.5,
+      color: theme.body,
+      maxLines: 5,
+    });
+
+    if (sel.taskCount) {
+      draw.text("共 " + sel.taskCount + " 条任务 · 被抽到 " + sel.times + " 次", sheet.x + PAD, sheet.y + 176, {
+        size: 11,
+        color: theme.faint,
+      });
+    } else if (sel.roleId) {
+      draw.text("这一天的角色", sheet.x + PAD, sheet.y + 100, {
+        size: 12,
+        color: theme.muted,
+      });
+    }
   }
 
   var close = { x: W - PAD - 64, y: sheet.y + sheet.h - 46, w: 64, h: 30, r: 15 };

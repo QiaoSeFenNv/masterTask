@@ -1,5 +1,5 @@
 /**
- * 生成的图片资源：卡包外表 + 卡包背景。
+ * 图片资源：卡包外表、场景背景和已完成的角色油画。
  *
  * 全部懒加载：没加载好时返回 null，调用方自己退回纯渐变的画法，
  * 所以启动第一帧永远是完整的，图片到了下一帧自然顶上去。
@@ -24,6 +24,21 @@ var FILES = {};
 PACK_IDS.forEach(function (id) {
   FILES["pack:" + id] = "pack-" + id + ".jpg";
   FILES["bg:" + id] = "bg-" + id + ".jpg";
+});
+
+// Only register artwork that actually ships; missing portraits must not issue 404s.
+FILES["role:detective"] = "role-detective.jpg";
+
+// Temporary oil-painted scenery for roles whose dedicated portraits are not ready.
+// These are visual backdrops, not pack membership (packs do not affect the draw).
+var ROLE_SCENES = {};
+var SCENE_ROLES = {
+  deep: ["detective", "apprentice", "architect", "watchmaker", "nightwatch", "alchemist", "surveyor"],
+  dusk: ["poet", "screenwriter", "collector", "photographer", "translator", "storyteller", "bard"],
+  dawn: ["wanderer", "gardener", "chef", "courier", "explorer", "coach"],
+};
+Object.keys(SCENE_ROLES).forEach(function (scene) {
+  SCENE_ROLES[scene].forEach(function (id) { ROLE_SCENES[id] = scene; });
 });
 
 function notify() {
@@ -68,7 +83,7 @@ function preload() {
   if (kicked) return;
   kicked = true;
   Object.keys(FILES).forEach(function (k) {
-    load(k, FILES[k]);
+    if (k.indexOf("role:") !== 0) load(k, FILES[k]);
   });
 }
 
@@ -85,6 +100,13 @@ function pack(seriesId) {
 /** 卡包背景（正方形） */
 function bg(seriesId) {
   return get("bg:" + seriesId);
+}
+
+/** Role portraits load only when a visible, unlocked card requests one. */
+function role(roleId) {
+  var key = "role:" + roleId;
+  if (FILES[key]) load(key, FILES[key]);
+  return get(key) || (ROLE_SCENES[roleId] ? bg(ROLE_SCENES[roleId]) : null);
 }
 
 /** 图片到齐 / 有新的到了就回调一次，用来触发重绘 */
@@ -105,6 +127,7 @@ module.exports = {
   preload: preload,
   pack: pack,
   bg: bg,
+  role: role,
   onLoad: onLoad,
   pending: pending,
   FILES: FILES

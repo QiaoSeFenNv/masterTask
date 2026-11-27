@@ -8,6 +8,7 @@ const {build} = require('./build-web.cjs');
 const {createServer} = require('./serve-web.cjs');
 const ARTIFACTS = path.resolve(__dirname, '.web-preview');
 const results = [];
+const {scratchAll} = require('./scratch-web-flow.cjs');
 async function state(page) { return page.evaluate(() => {
   const s = rolesPreview.game.store.state;
   return {stage:s.anim.kind,draw:s.draw,slot:s.slot,picked:s.picked.slice(),p:s.anim.p,
@@ -126,6 +127,8 @@ async function selectAndReveal(session,name,expectPag=true,autoFinish=false) {
   saved=await state(page);assert.equal(saved.stage,'');assert.equal(saved.draw.role.id,selected);
   assert.equal(await page.evaluate(()=>rolesPreview.requireGame('js/pag-reveal.js').status().ready),false);
   results.push({case:name+' real card selection, reveal, early-tap guard and '+(autoFinish?'auto-finish':'click-through'),mode,role:selected,screenshot});
+  await scratchAll(page,touch);
+  results.push({case:name+' today-only scratching reveals tasks without changing the selected role'});
 }
 async function zone(page,id) {
   return page.evaluate(id=>{

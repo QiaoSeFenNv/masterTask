@@ -181,6 +181,8 @@ function storeWith(api) {
     "./layout.js": { normalizeDraw: (d) => d },
     "./pack.js": pack,
     "./animation.js": animation,
+    "./scratch.js": require("../game/js/scratch.js"),
+    "./env.js": {getWx: () => null},
   });
   Object.assign(store.state, {
     status: "ready", draw: null, offer: [{ id: "a" }, { id: "b" }, { id: "c" }],
