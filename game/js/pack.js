@@ -8,6 +8,7 @@
  */
 
 var animation = require("./animation.js");
+var packetSurface = require("./packet-surface.js");
 
 var SERIES = [
   {
@@ -149,7 +150,7 @@ var clamp01 = animation.clamp01;
 var easeOut = animation.easing.outCubic;
 var easeBack = animation.easing.outBack;
 
-function tearRect(top) { return {x:112.5,y:top+96,w:150,h:210}; }
+function tearRect(top) { return {x:187.5-packetSurface.WIDTH/2,y:top+48,w:packetSurface.WIDTH,h:packetSurface.HEIGHT}; }
 
 module.exports = {
   OPEN_MS: OPEN_MS,

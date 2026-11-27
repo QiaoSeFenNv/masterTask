@@ -8,9 +8,9 @@ module.exports = {
   "transparent": true,
   "packet": {
     "x": 112.5,
-    "y": 96,
+    "y": 48,
     "width": 150,
-    "height": 210,
+    "height": 278,
     "seam": 24,
     "tiltDegrees": 8,
     "returnMs": 260
@@ -49,7 +49,7 @@ module.exports = {
     {
       "name": "packet-body",
       "width": 150,
-      "height": 210,
+      "height": 278,
       "imageIndex": 5
     },
     {

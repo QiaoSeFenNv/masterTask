@@ -72,7 +72,7 @@ function create(series) {
       template.textures.forEach(function(texture){
         var bitmap=makeCanvas('2d',Math.round(texture.width*ratio),Math.round(texture.height*ratio));resource.bitmaps.push(bitmap);
         var c=bitmap.getContext('2d');c.setTransform(ratio,0,0,ratio,0,0);
-        textures.paint(c,texture.name,texture.width,texture.height,series,artwork,packetSurface.paint,packetSurface.interior,foil);
+        textures.paint(c,texture.name,texture.width,texture.height,series,artwork,packetSurface.paint,packetSurface.interior,foil,template.packet);
         // SDK 4.3.51 uploads OffscreenCanvas bytes without premultiplying them.
         // ImageData is straight RGBA; declare that explicitly instead of making pale edges additive.
         var pixels=c.getImageData(0,0,bitmap.width,bitmap.height).data;

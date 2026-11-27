@@ -1,7 +1,9 @@
 /** Static PAG textures derived from the existing packet artwork; no new illustration. */
-function paint(ctx, name, width, height, series, image, packetPainter, interiorPainter, foil) {
+function paint(ctx, name, width, height, series, image, packetPainter, interiorPainter, foil, packet) {
   var c = ctx;
-  var seam = 24;
+  var seam = packet ? packet.seam : 24;
+  var packetWidth = packet ? packet.width : 150;
+  var packetHeight = packet ? packet.height : 278;
   var accent = series.accent;
   var seed = (series.id.charCodeAt(0) || 1) * 0.37;
   function round(x, y, w, h, r) {
@@ -26,29 +28,29 @@ function paint(ctx, name, width, height, series, image, packetPainter, interiorP
     else { var g=c.createLinearGradient(0,0,w,h); g.addColorStop(0,series.top);g.addColorStop(.5,series.mid);g.addColorStop(1,series.bottom);c.fillStyle=g;c.fillRect(0,0,w,h); }
   }
   function packetArtwork() {
-    if(packetPainter)packetPainter(c,image,{x:0,y:0,w:150,h:210},series,{shadow:false,foil:foil});
-    else artwork(150,210);
+    if(packetPainter)packetPainter(c,image,{x:0,y:0,w:packetWidth,h:packetHeight},series,{shadow:false,foil:foil});
+    else artwork(packetWidth,packetHeight);
   }
   c.clearRect(0,0,width,height);
   if (name === 'packet-body') {
     c.save(); c.beginPath(); c.moveTo(0,seam+edge(0));
-    for(var i=1;i<=16;i++)c.lineTo(150*i/16,seam+edge(i/16));
-    c.lineTo(150,210);c.lineTo(0,210);c.closePath();c.clip();packetArtwork();
+    for(var i=1;i<=16;i++)c.lineTo(packetWidth*i/16,seam+edge(i/16));
+    c.lineTo(packetWidth,packetHeight);c.lineTo(0,packetHeight);c.closePath();c.clip();packetArtwork();
     c.restore();
   } else if (name.indexOf('strip-') === 0) {
     var fold=name==='strip-flat'?0:name==='strip-curl'?.5:1;
-    c.save();c.beginPath();c.moveTo(0,0);c.lineTo(150,0);
-    for(var j=16;j>=0;j--){var t=j/16;c.lineTo(150*t,seam+edge(t)-Math.sin(t*Math.PI)*fold*9);}
+    c.save();c.beginPath();c.moveTo(0,0);c.lineTo(packetWidth,0);
+    for(var j=16;j>=0;j--){var t=j/16;c.lineTo(packetWidth*t,seam+edge(t)-Math.sin(t*Math.PI)*fold*9);}
     c.closePath();c.clip();
     packetArtwork();
     c.restore();
     if(fold){
       var g=c.createLinearGradient(0,seam-10,0,seam+12);g.addColorStop(0,'rgba(246,245,238,0)');g.addColorStop(.28,'rgba(217,224,215,.58)');g.addColorStop(.64,'rgba(151,171,169,.54)');g.addColorStop(1,'rgba(76,111,120,.30)');
-      c.beginPath();c.moveTo(0,seam+edge(0));c.quadraticCurveTo(72,seam-fold*12,150,seam+edge(1));
+      c.beginPath();c.moveTo(0,seam+edge(0));c.quadraticCurveTo(72,seam-fold*12,packetWidth,seam+edge(1));
       c.quadraticCurveTo(82,seam+9-fold*4,0,seam+edge(0));c.fillStyle=g;c.fill();
-      c.beginPath();c.moveTo(0,seam+edge(0));c.quadraticCurveTo(72,seam-fold*12,150,seam+edge(1));c.strokeStyle='rgba(255,255,255,.34)';c.lineWidth=.8;c.stroke();
+      c.beginPath();c.moveTo(0,seam+edge(0));c.quadraticCurveTo(72,seam-fold*12,packetWidth,seam+edge(1));c.strokeStyle='rgba(255,255,255,.34)';c.lineWidth=.8;c.stroke();
     }
-    c.beginPath();for(var f=0;f<=16;f++){var tf=f/16;var fx=150*tf,fy=seam+edge(tf)-Math.sin(tf*Math.PI)*fold*9;var len=1.5+Math.abs(noise(f+11)-.5)*5;c.moveTo(fx,fy);c.lineTo(fx+(noise(f+53)-.5)*len,fy+len);}
+    c.beginPath();for(var f=0;f<=16;f++){var tf=f/16;var fx=packetWidth*tf,fy=seam+edge(tf)-Math.sin(tf*Math.PI)*fold*9;var len=1.5+Math.abs(noise(f+11)-.5)*5;c.moveTo(fx,fy);c.lineTo(fx+(noise(f+53)-.5)*len,fy+len);}
     c.strokeStyle='rgba(255,255,255,.36)';c.lineWidth=.7;c.stroke();
   } else if(name==='series-glow') {
     c.save();c.translate(width/2,height/2);c.scale(1,height/width);

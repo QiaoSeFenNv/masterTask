@@ -1,65 +1,61 @@
-/** Build small transparent satin-foil masks. No illustration is generated or replaced.
+/** Build reproducible, transparent aluminium seals for flat trading-card boosters.
+ * Existing illustration is preserved. No generation service or original PNGs involved.
  * node tools/build-packet-foil.cjs
- * The printed face stays transparent; light only describes seals and tucked edges.
  */
 const fs=require('node:fs/promises'),path=require('node:path');
 const {chromium}=require('playwright-core');
 const {browserExecutable}=require('./build-pag-template.cjs');
 const {SERIES}=require('../game/js/pack.js');
+const {WIDTH,HEIGHT}=require('../game/js/packet-surface.js');
 const ROOT=path.resolve(__dirname,'..');
 async function build() {
   let browser;
   try {
-    browser=await chromium.launch({executablePath:await browserExecutable(),headless:true});
+    browser=await chromium.launch({executablePath:await browserExecutable(),headless:true,args:['--use-angle=d3d11']});
     const page=await browser.newPage();
-    const output=await page.evaluate(series=>series.map(s=>{
-      const canvas=document.createElement('canvas');canvas.width=300;canvas.height=420;
+    const output=await page.evaluate(({series,width,height})=>series.map(s=>{
+      const canvas=document.createElement('canvas');canvas.width=width*2;canvas.height=height*2;
       const c=canvas.getContext('2d');c.scale(2,2);
       function gradient(x0,y0,x1,y1,stops) {
         const g=c.createLinearGradient(x0,y0,x1,y1);
         for(const [at,color] of stops)g.addColorStop(at,color);
         return g;
       }
-      const white=s.id==='dawn'?'255,242,218':'238,248,245';
-      function light(a){return 'rgba('+white+','+a+')';}
-      // Pressed seams run horizontally and have a continuous soft sheen.
-      for(const y of [2.5,199]) {
-        c.fillStyle=gradient(0,y,0,y+9,[[0,light(.04)],[.2,light(.12)],[.65,'rgba(0,0,0,.07)'],[1,light(.035)]]);
-        c.fillRect(3,y,143,9);
-        for(let j=0;j<4;j++) {
-          const yy=y+1.1+j*2.05;
-          c.strokeStyle=gradient(6,0,141,0,[[0,light(.025)],[.32,light(.24)],[.62,light(.09)],[1,light(.035)]]);
-          c.lineWidth=.55;c.beginPath();c.moveTo(6,yy);c.lineTo(141,yy);c.stroke();
-          c.strokeStyle='rgba(0,0,0,.11)';c.lineWidth=.45;c.beginPath();c.moveTo(6,yy+.7);c.lineTo(141,yy+.7);c.stroke();
+      function light(a){return 'rgba(245,250,255,'+a+')';}
+      // Restrained metallic reflections only on the two pressed silver bands.
+      for(const [y,h] of [[2,31],[258,18]]) {
+        c.fillStyle=gradient(0,y,0,y+h,[[0,light(.08)],[.20,light(.50)],
+          [.39,'rgba(49,68,87,.12)'],[.56,light(.26)],[.81,light(.05)],[1,light(.34)]]);
+        c.fillRect(3,y,144,h);
+      }
+      // Flat heat-seal grooves: only a few small, parallel lines.
+      for(const base of [3.5,264.5]) {
+        for(let i=0;i<4;i++) {
+          const y=base+i*1.8;
+          c.strokeStyle=gradient(8,0,142,0,[[0,light(.05)],[.28,light(.70)],[.66,light(.24)],[1,light(.12)]]);
+          c.lineWidth=.55;c.beginPath();c.moveTo(8,y);c.lineTo(142,y);c.stroke();
+          c.strokeStyle='rgba(48,64,83,.15)';c.lineWidth=.4;
+          c.beginPath();c.moveTo(8,y+.7);c.lineTo(142,y+.7);c.stroke();
         }
       }
-      // Narrow folds on the edges; a bright/dark pair suggests thickness.
-      c.fillStyle=gradient(2,0,10,0,[[0,'rgba(0,0,0,.10)'],[.22,light(.23)],[.42,light(.065)],[1,light(0)]]);
-      c.fillRect(2,16,8,180);
-      c.fillStyle=gradient(135,0,146,0,[[0,light(0)],[.49,'rgba(0,0,0,.09)'],[.70,light(.16)],[1,light(0)]]);
-      c.fillRect(135,16,11,180);
-      function crease(points,shade) {
-        c.beginPath();points.forEach(([x,y],i)=>i?c.lineTo(x,y):c.moveTo(x,y));c.closePath();c.fillStyle=shade;c.fill();
-      }
-      // Corners carry the folds; the printed center has no decorative border.
-      crease([[4,13],[22,15],[7,28]],gradient(4,13,12,27,[[0,light(.10)],[.40,light(.16)],[1,light(0)]]));
-      crease([[5,16],[15,22],[6,32]],gradient(6,17,10,30,[[0,'rgba(0,0,0,.16)'],[1,'rgba(0,0,0,0)']]));
-      crease([[141,13],[123,15],[140,31]],gradient(143,15,127,25,[[0,light(.21)],[.33,light(.08)],[1,light(0)]]));
-      crease([[143,196],[126,195],[140,184]],gradient(140,196,135,185,[[0,light(.15)],[.50,light(.04)],[1,light(0)]]));
-      crease([[5,196],[23,195],[7,184]],gradient(6,196,17,185,[[0,light(.21)],[.30,'rgba(0,0,0,.09)'],[1,light(0)]]));
-      const pixels=c.getImageData(0,0,300,420).data;
+      // No swollen gusset, corner creases or shaded belly around the artwork.
+      c.fillStyle=gradient(3,0,7,0,[[0,light(.12)],[.35,light(.65)],[1,light(0)]]);
+      c.fillRect(3,34,4,224);
+      c.fillStyle=gradient(143,0,147,0,[[0,light(0)],[.65,light(.48)],[1,light(.06)]]);
+      c.fillRect(143,34,4,224);
+      const pixels=c.getImageData(0,0,canvas.width,canvas.height).data;
       let centerOpaque=0;
-      for(let y=66;y<362;y++)for(let x=30;x<266;x++)if(pixels[(y*300+x)*4+3])centerOpaque++;
-      if(centerOpaque)throw new Error('Material mask covers the printed illustration');
+      for(let y=70;y<516;y++)for(let x=20;x<280;x++)if(pixels[(y*canvas.width+x)*4+3])centerOpaque++;
+      if(centerOpaque)throw new Error('Foil must not cover the printed artwork');
       return {id:s.id,png:canvas.toDataURL('image/png').split(',')[1],centerOpaque};
-    }),SERIES);
+    }),{series:SERIES,width:WIDTH,height:HEIGHT});
     const assets=[];
     for(const item of output) {
       const file='packet-foil-'+item.id+'.png',bytes=Buffer.from(item.png,'base64');
       await fs.writeFile(path.join(ROOT,'game/assets',file),bytes);
-      assets.push({file,bytes:bytes.length,centerOpaque:item.centerOpaque});
+      assets.push({file,bytes:bytes.length,width:WIDTH*2,height:HEIGHT*2,centerOpaque:item.centerOpaque});
     }
-    console.log(JSON.stringify({material:'printed satin foil',assets},null,2));return assets;
+    console.log(JSON.stringify({material:'flat aluminium trading-card booster',assets},null,2));return assets;
   } finally {if(browser)await browser.close();}
 }
 if(require.main===module)build().catch(error=>{console.error(error);process.exitCode=1;});

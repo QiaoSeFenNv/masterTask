@@ -56,7 +56,7 @@ async function renderTextures(page,spec){
     const image=new Image();await new Promise((resolve,reject)=>{image.onload=resolve;image.onerror=reject;image.src=source;});
     const foil=new Image();await new Promise((resolve,reject)=>{foil.onload=resolve;foil.onerror=reject;foil.src=foilSource;});
     return spec.textures.map(texture=>{const canvas=document.createElement('canvas');canvas.width=texture.width;canvas.height=texture.height;
-      paintTearTexture(canvas.getContext('2d'),texture.name,texture.width,texture.height,series,image,paintPacketSurface,paintPacketInterior,foil);
+      paintTearTexture(canvas.getContext('2d'),texture.name,texture.width,texture.height,series,image,paintPacketSurface,paintPacketInterior,foil,spec.packet);
       return {...texture,data:canvas.toDataURL('image/webp',.94).split(',')[1]};});
   },{spec,series,source,foilSource});
 }

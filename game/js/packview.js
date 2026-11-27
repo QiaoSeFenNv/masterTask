@@ -117,8 +117,11 @@ function paintSeriesPacket(s, rect, opacity, labelOpacity) {
   c.restore();
 }
 function seriesRect(vp, index, at) {
-  var gap=12,w=(layout.innerW()-gap*(pack.SERIES.length-1))/pack.SERIES.length;
-  return {x:PAD+index*(w+gap),y:layout.contentTop(vp)+68+Math.sin(at/700+index)*2,w:w,h:w*210/150};
+  var gap=12,count=pack.SERIES.length,w=(layout.innerW()-gap*(count-1))/count;
+  var h=Math.min(w*packetSurface.HEIGHT/packetSurface.WIDTH,Math.max(64,layout.contentH(vp)-130));
+  w=h*packetSurface.WIDTH/packetSurface.HEIGHT;
+  var left=(W-w*count-gap*(count-1))/2;
+  return {x:left+index*(w+gap),y:layout.contentTop(vp)+68+Math.sin(at/700+index)*2,w:w,h:h};
 }
 function renderSeriesPick(vp, state, options) {
   options = options || {};
@@ -131,7 +134,7 @@ function renderSeriesPick(vp, state, options) {
     if (s.id === options.skip) return;
     var rect = seriesRect(vp,i,at);
     paintSeriesPacket(s,rect,opacity,1);
-    // The printed pouch and its caption are one selectable option.
+    // The flat booster and its caption are one selectable option.
     zones.push({id:"series",seriesId:s.id,rect:{x:rect.x,y:rect.y,w:rect.w,h:rect.h+48}});
   });
   return {zones:zones,contentH:layout.contentH(vp)};
@@ -363,7 +366,7 @@ function renderTear(vp, state, anim) {
 
   var hint =
     fin > 0 ? "撕开了" : p <= 0.01 ? "划动卡包，撕开包装" : p < 1 ? "继续划开…" : "撕开了";
-  draw.text(hint, W / 2, y0 + ch + 54, {
+  draw.text(hint, W / 2, Math.min(y0 + ch + 32, layout.contentBottom(vp) - 14), {
     size: 12,
     color: theme.muted,
     align: "center",

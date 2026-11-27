@@ -21,7 +21,9 @@
     "web:dev": "node tools/build-web.cjs --serve",
     "web:preview": "node tools/serve-web.cjs",
     "test:web": "node tools/web-check.cjs",
-    "test:pages": "node --test tools/latest-pages.test.cjs tools/collection.test.cjs"
+    "test:pages": "node --test tools/latest-pages.test.cjs tools/collection.test.cjs",
+    "test:pack": "node --test tools/booster-pack.test.cjs",
+    "test:pack:web": "node tools/booster-pack-web-check.cjs"
   },
   "devDependencies": {
     "libpag-miniprogram": "4.3.51",

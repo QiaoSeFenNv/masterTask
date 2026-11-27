@@ -23,7 +23,7 @@ WEB_PREVIEW_PORT 可修改端口，WEB_PREVIEW_HOST 可修改监听地址；默�
 
 ## 分享预览
 
-当前临时地址（2026-11-27）：[打开最新 3D 页面预览](https://gmc-attempting-traveling-brands.trycloudflare.com)。
+当前临时地址（2026-11-27）：[打开最新 3D 页面预览](https://pas-foo-merely-sin.trycloudflare.com)。
 
 其他人可以直接打开体验，记录保存在各自的浏览器中。“复制链接”可复制当前地址，“重新体验”清空当前浏览器的演示记录并回到选包。
 
@@ -37,12 +37,16 @@ WEB_PREVIEW_PORT 可修改端口，WEB_PREVIEW_HOST 可修改监听地址；默�
 - tools/build-web.cjs：将真实游戏模块打包为浏览器模块，复制必要图片与许可证，将 PAG 的 Brotli WASM 解压为浏览器可加载的 WASM。
 - tools/serve-web.cjs：只服务 web/dist，提供正确 MIME、压缩、缓存与 CSP；不代理本地 API。
 
+卡包采用参考图式的扁平补充包：150 × 278 的直边轮廓、银色上下封边、满幅油画印刷，不再使用鼓胀袋身和侧褶。选包、就位、Canvas 撕包和 PAG 出牌使用同一比例；封边 PNG 为 300 × 556，每张约 27 KB，中央插画区域保持透明。
+
 选包新增 480 ms 放大移动过渡，之后才接受撕包。撕包和转盘继续随拖动变化，确认角色后播放同一份 PAG 揭晓；运行时不可用时使用 Canvas 回退。候选说明放到卡片下方，避免遮挡卡面；小屏时把候选区上移，飞行动画的终点与揭晓的起点同步调整，按钮和提示保持在导航栏上方。图鉴卡片随滚动移动，并限制在可见列表区域内绘制和点击。
 
 ## 验证
 
 ```powershell
 npm run test:web
+npm run test:pack
+npm run test:pack:web
 npm run test:pages
 npm run test:animation
 npm run test:pag
@@ -53,3 +57,5 @@ npm run test:pag
 浏览器验证使用真实鼠标与 Chromium 触摸输入，检查选包过渡、跟手撕包、转盘选卡、PAG 揭晓、早期点击保护、继续和自动结束、今日 3D 卡牌与历史卡的鼠标/触摸/键盘旋转翻面、卡牌日历和油画图鉴、手机尺寸变化、访客数据隔离、重新体验及运行时回退。为核对过渡中的画面，测试使用可控时间轴；这不代表物理设备的帧率测试。
 
 截图与验证报告在 tools/.web-preview/；设计与验收范围见 [web/DESIGN.md](web/DESIGN.md)。
+
+卡包专项验收：`npm run test:pack` 检查几何、首帧回退、裁切与缓存；`npm run test:pack:web` 用真实鼠标与触摸检查三个手机尺寸、左右撕包、PAG 和缺图 Canvas 回退。截图与报告位于 `tools/.web-preview/booster-*.png` / `booster-verification.json`。
