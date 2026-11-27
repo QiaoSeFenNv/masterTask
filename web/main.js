@@ -40,6 +40,9 @@ function updateHint() {
     tear: '按住包口，从左向右拖动撕开', ring: '左右拖动转盘，点开三张卡',
     top: '三张候选正在就位', pick: '选中一张角色，再确认落定', reveal: '揭晓后可点击继续'};
   status.textContent = state.status !== 'ready' ? '正在准备今天的卡包…' :
+    state.tab === 'collection' ? '向上滑动浏览图鉴，点开已解锁角色查看详情' :
+    state.tab === 'calendar' ? '查看历史角色，切换月份回顾每天的任务' :
+    state.draw && state.scratch && !state.scratch.complete ? '按住今日卡背来回刮动，揭开介绍和任务；卡外可滑动' :
     (hints[state.anim.kind] || '完成角色任务，也可以看看日历和图鉴');
 }
 game.store.subscribe(updateHint);

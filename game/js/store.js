@@ -8,12 +8,16 @@ var layout = require("./layout.js");
 var pack = require("./pack.js");
 var sfx = require("./sfx.js");
 var animation = require("./animation.js");
+var scratch = require("./scratch.js");
+var env = require("./env.js");
+var SCRATCH_KEY = "roles.scratch.v1";
 
 var state = {
   tab: "today", // today | calendar | collection
   status: "loading", // loading | ready | error；未落定时看 state.offer 判断显示哪一屏
   error: "",
   date: "",
+  scratch: null, // today-only content cover; persisted by draw seed
   draw: null, // normalized by layout.normalizeDraw，落定后才有
   offer: [], // [{id,name,emoji,tagline,intro,gradient,accent}] 今天摊开的 10 张，只能看外观
   picked: [], // 已点开的 roleId，最多 3 个
@@ -68,7 +72,36 @@ function resetToast() {
 
 /* ---------------- 今日 ---------------- */
 
+function saveScratch() {
+  if (!state.scratch) return;
+  try { env.getWx().setStorageSync(SCRATCH_KEY, JSON.stringify(scratch.snapshot(state.scratch))); } catch (e) { /* best-effort local progress */ }
+}
+function prepareScratch(raw) {
+  state.scratch = null;
+  if (!raw || !state.draw) return;
+  // The server seed also isolates different users and same-role development redraws.
+  var key = [raw.date, raw.role.id, raw.seed || (raw.tasks || []).map(function (t) {return t.id;}).join(",")].join(":");
+  var saved;
+  try { saved = env.getWx().getStorageSync(SCRATCH_KEY); } catch (e) { /* local storage may be unavailable */ }
+  if (typeof saved === "string") { try { saved = JSON.parse(saved); } catch (e) { saved = null; } }
+  state.scratch = scratch.restore(key, saved);
+  if ((raw.checkins || []).some(function (c) { return c.done || c.note; })) {
+    state.scratch.complete = true; state.scratch.progress = 1;
+  }
+}
+function scratchPending() { return Boolean(state.draw && state.scratch && !state.scratch.complete); }
+function scratchStroke(from, to) {
+  if (state.status !== "ready" || state.tab !== "today" || state.anim.kind === "reveal" || !scratchPending()) return false;
+  var changed = scratch.add(state.scratch, from, to);
+  if (changed) {
+    if (state.scratch.complete) saveScratch();
+    emit();
+  }
+  return changed;
+}
+
 function loadToday() {
+  saveScratch();
   state.status = "loading";
   state.error = "";
   emit();
@@ -77,6 +110,7 @@ function loadToday() {
     .then(function (res) {
       state.date = res.date;
       state.draw = layout.normalizeDraw(res.drawn ? res.draw : null);
+      prepareScratch(res.drawn ? res.draw : null);
       state.offer = state.draw ? [] : res.offer || [];
       state.canRedraw = Boolean(res.canRedraw);
       state.picked = [];
@@ -277,6 +311,7 @@ function confirmPick() {
     .then(function (d) {
       state.date = d.date;
       state.draw = layout.normalizeDraw(d);
+      prepareScratch(d);
       state.offer = [];
       state.picked = [];
       state.pickedAt = {};
@@ -321,6 +356,8 @@ function redrawToday() {
       state.shifting = false;
       // 服务端已经作废今天的卡；回到空态再拉一次，就会重新发一包牌
       state.draw = null;
+      state.scratch = null;
+      try { env.getWx().removeStorageSync(SCRATCH_KEY); } catch (e) { /* local storage unavailable */ }
       state.offer = [];
       state.picked = [];
       state.pickedAt = {};
@@ -366,7 +403,7 @@ function pickedRoles() {
 }
 
 function toggleTask(taskId) {
-  if (!state.draw) return;
+  if (!state.draw || scratchPending()) return;
   var t = null;
   for (var i = 0; i < state.draw.tasks.length; i++) {
     if (state.draw.tasks[i].id === taskId) t = state.draw.tasks[i];
@@ -408,7 +445,7 @@ function setNoteDraft(text) {
 }
 
 function saveNote() {
-  if (!state.draw) return Promise.resolve();
+  if (!state.draw || scratchPending()) return Promise.resolve();
   var tasks = state.draw.tasks;
   var target = null;
   for (var i = 0; i < tasks.length; i++) {
@@ -555,6 +592,7 @@ function loadCollection() {
 
 function setTab(tab) {
   if (state.tab === tab) return;
+  saveScratch();
   state.tab = tab;
   state.selected = null;
   state.scroll = 0;
@@ -585,6 +623,9 @@ module.exports = {
   toast: toast,
   resetToast: resetToast,
   loadToday: loadToday,
+  scratchPending: scratchPending,
+  scratchStroke: scratchStroke,
+  saveScratch: saveScratch,
   loadStats: loadStats,
   drawToday: drawToday,
   redrawToday: redrawToday,

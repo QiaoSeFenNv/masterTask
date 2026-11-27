@@ -639,6 +639,29 @@ const run = async () => {
     check("落定后过场结束", store.stage() === "", store.stage());
   }
 
+  /* 今日卡背：原有任务断言前，加入真实触摸刮开步骤（不改断言）。 */
+  if (store.scratchPending()) {
+    app.render();
+    const scratchRect = layout.todayScratchRect();
+    const packet = (x, y) => ({touches:[{clientX:x,clientY:y}],changedTouches:[{clientX:x,clientY:y}]});
+    for (let fy = 0.04; fy < 1 && store.scratchPending(); fy += 0.095) {
+      const y = layout.contentTop(vp) + scratchRect.y - store.state.scroll + scratchRect.h * fy;
+      if (y >= layout.contentBottom(vp) - 2) {
+        app.onTouchStart(packet(7, layout.contentBottom(vp) - 30));
+        app.onTouchMove(packet(7, layout.contentTop(vp) + 30));
+        app.onTouchEnd(packet(7, layout.contentTop(vp) + 30));
+        app.render();
+        fy -= 0.095; continue;
+      }
+      app.onTouchStart(packet(scratchRect.x + 8, y));
+      app.onTouchMove(packet(scratchRect.x + scratchRect.w - 8, y));
+      app.onTouchEnd(packet(scratchRect.x + scratchRect.w - 8, y));
+      app.render();
+    }
+    check("今日卡背刮开后才解锁任务", !store.scratchPending());
+    store.state.scroll = 0;
+  }
+
   /* 4. 已抽卡:渲染出角色名与任务 */
   ops.length = 0;
   app.render();
@@ -716,6 +739,10 @@ const run = async () => {
   /* 10. 回今日 */
   app.dispatch(tabs[0].x + 10, tabs[0].y + 10);
   check("切回今日", store.state.tab === "today");
+
+  // Start the entry before waiting; this harness has no automatic RAF paint.
+  app.render();
+  await sleep(300);
 
   /* 11. 重新抽卡（测试环境的临时口子）：作废今天的卡，重新发一包 */
   if (store.state.canRedraw) {
